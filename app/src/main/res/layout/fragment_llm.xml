@@ -80,13 +80,15 @@
             android:layout_width="0dp"
             android:layout_height="48dp"
             android:layout_weight="1"
-            android:background="@drawable/bg_edittext_gray">
+            android:background="@drawable/bg_rounded_18dp"
+            android:backgroundTint="#F0F0F0">
 
             <EditText
                 android:id="@+id/editTextMessage"
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
-                android:background="@drawable/bg_edittext_gray"
+                android:background="@drawable/bg_rounded_18dp"
+                android:backgroundTint="#F0F0F0"
                 android:hint="LLM으로 장소 대여하기"
                 android:textSize="16sp"
                 android:paddingStart="16dp"

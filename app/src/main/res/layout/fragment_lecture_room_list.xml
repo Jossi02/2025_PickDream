@@ -79,7 +79,7 @@
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
             android:background="@android:color/transparent"
-            android:src="@drawable/ic_search_small"
+            android:src="@drawable/ic_search"
             android:contentDescription="@string/search"
             android:focusable="false"
             android:clickable="true"

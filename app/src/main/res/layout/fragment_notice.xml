@@ -64,7 +64,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:background="@android:color/transparent"
-            android:drawableStart="@drawable/ic_search_small"
+            android:drawableStart="@drawable/ic_search"
             android:drawablePadding="8dp"
             android:hint="검색어를 입력해주세요"
             android:imeOptions="actionSearch"

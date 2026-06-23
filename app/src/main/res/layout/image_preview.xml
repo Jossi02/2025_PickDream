@@ -61,8 +61,8 @@
         android:layout_height="56dp"
         android:layout_margin="16dp"
         android:layout_gravity="bottom"
-        android:background="@drawable/rounded_button"
-        android:backgroundTint="@null"
+        android:background="@drawable/bg_rounded_16dp"
+        android:backgroundTint="#6391EE"
         android:text="강의실 예약하기"
         android:textAllCaps="false"
         android:textColor="@android:color/white"/>

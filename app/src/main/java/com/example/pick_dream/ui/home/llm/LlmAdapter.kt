@@ -26,12 +26,14 @@ class LlmAdapter(private val messages: List<LlmMessage>) :
 
         if (message.isUser) {
             holder.binding.layoutRoot.gravity = Gravity.END
-            holder.binding.textMessage.setBackgroundResource(R.drawable.bg_user_bubble)
+            holder.binding.textMessage.setBackgroundResource(R.drawable.bg_rounded_16dp)
+            holder.binding.textMessage.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#6391EE"))
             holder.binding.textMessage.setTextColor(context.getColor(android.R.color.white))
             holder.binding.imageBotIcon.visibility = android.view.View.GONE
         } else {
             holder.binding.layoutRoot.gravity = Gravity.START
-            holder.binding.textMessage.setBackgroundResource(R.drawable.bg_bot_bubble)
+            holder.binding.textMessage.setBackgroundResource(R.drawable.bg_rounded_16dp)
+            holder.binding.textMessage.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#F7F9FF"))
             holder.binding.textMessage.setTextColor(context.getColor(android.R.color.black))
             holder.binding.imageBotIcon.visibility = android.view.View.VISIBLE
         }

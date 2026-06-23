@@ -59,7 +59,8 @@
         <ImageView
             android:layout_width="20dp"
             android:layout_height="20dp"
-            android:src="@drawable/ic_search_2"
+            android:src="@drawable/ic_search"
+            app:tint="#3C5ABD"
             android:contentDescription="검색 아이콘" />
 
         <AutoCompleteTextView
@@ -174,8 +175,8 @@
                 android:text="강의실 예약하기"
                 android:textAllCaps="false"
                 android:textColor="@android:color/white"
-                android:background="@drawable/rounded_button"
-                android:backgroundTint="@null"
+                android:background="@drawable/bg_rounded_16dp"
+                android:backgroundTint="#6391EE"
                 android:paddingVertical="10dp"/>
 
         </LinearLayout>

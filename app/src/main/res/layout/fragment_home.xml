@@ -130,7 +130,8 @@
                 android:orientation="horizontal"
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginBottom="16dp"
-                android:background="@drawable/rounded_button_3"
+                android:background="@drawable/bg_rounded_16dp"
+                android:backgroundTint="#DCEBFE"
                 android:padding="16dp">
 
                 <!-- 방 이미지 with 퍼센트 -->
@@ -272,7 +273,8 @@
                     android:orientation="vertical"
                     android:gravity="center"
                     android:padding="16dp"
-                    android:background="@drawable/rounded_button"
+                    android:background="@drawable/bg_rounded_16dp"
+                    android:backgroundTint="#6391EE"
                     android:foreground="?attr/selectableItemBackground"
                     android:clickable="true"
                     android:focusable="true">
@@ -311,7 +313,8 @@
                     android:orientation="vertical"
                     android:gravity="center"
                     android:padding="16dp"
-                    android:background="@drawable/rounded_button_2"
+                    android:background="@drawable/bg_rounded_16dp"
+                    android:backgroundTint="#9FC7FA"
                     android:foreground="?attr/selectableItemBackground"
                     android:clickable="true"
                     android:focusable="true">
@@ -350,7 +353,8 @@
                     android:orientation="vertical"
                     android:gravity="center"
                     android:padding="16dp"
-                    android:background="@drawable/rounded_button_2"
+                    android:background="@drawable/bg_rounded_16dp"
+                    android:backgroundTint="#9FC7FA"
                     android:foreground="?attr/selectableItemBackground"
                     android:clickable="true"
                     android:focusable="true">
@@ -389,7 +393,8 @@
                     android:orientation="vertical"
                     android:gravity="center"
                     android:padding="16dp"
-                    android:background="@drawable/rounded_button_2"
+                    android:background="@drawable/bg_rounded_16dp"
+                    android:backgroundTint="#9FC7FA"
                     android:foreground="?attr/selectableItemBackground"
                     android:clickable="true"
                     android:focusable="true">

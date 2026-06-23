@@ -134,9 +134,11 @@ class ReviewFragment : Fragment() {
 
     private fun updateStars(starViews: List<ImageView>, selectedCount: Int) {
         starViews.forEachIndexed { index, imageView ->
-            imageView.setImageResource(
-                if (index < selectedCount) R.drawable.ic_star_color else R.drawable.ic_star_empty
-            )
+            if (index < selectedCount) {
+                imageView.setColorFilter(android.graphics.Color.parseColor("#FFDB63"))
+            } else {
+                imageView.clearColorFilter()
+            }
         }
     }
 
