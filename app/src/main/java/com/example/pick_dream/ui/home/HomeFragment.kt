@@ -127,7 +127,7 @@ class HomeFragment : Fragment() {
 
         if (reservation == null) {
             binding.layoutNoReservation.visibility = View.VISIBLE
-            binding.tvNoReservationMessage.text = "현재 진행 중인 예약이 없습니다.\n"
+            binding.tvNoReservationMessage.text = "현재 진행 중인 예약이 없습니다."
             binding.layoutReservationDetails.visibility = View.GONE
             binding.flReservationStatusVisual.visibility = View.GONE
             return
