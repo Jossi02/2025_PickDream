@@ -11,7 +11,7 @@
         android:id="@+id/tvDialogMessage"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="예약을 취소하시겠습니까?"
+        android:text="정말 예약 취소하시겠습니까?"
         android:textColor="#000000"
         android:textSize="16sp"
         android:gravity="center"

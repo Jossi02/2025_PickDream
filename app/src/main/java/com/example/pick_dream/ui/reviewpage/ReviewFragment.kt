@@ -45,7 +45,7 @@ class ReviewFragment : Fragment() {
 
         requireActivity().findViewById<View>(R.id.nav_view)?.visibility = View.GONE
 
-        binding.tvGuideText.text = " ÀÌ¿ë ÈÄ±â¸¦ ³²°ÜÁÖ¼¼¿ä!"
+        binding.tvGuideText.text = "${args.roomId} ì´ìš© í›„ê¸°ë¥¼ ë‚¨ê²¨ì£¼ì„¸ìš”!"
 
         setupStarRating()
         setupCheckBoxStyle(binding.layoutPurpose)
@@ -84,24 +84,24 @@ class ReviewFragment : Fragment() {
     }
 
     private fun submitReview() {
-        binding.btnSubmit.isEnabled = false // Áßº¹ Á¦Ãâ ¹æÁö
+        binding.btnSubmit.isEnabled = false // ì¤‘ë³µ ì œì¶œ ë°©ì§€
 
         val currentUser = FirebaseAuth.getInstance().currentUser
         if (currentUser == null) {
-            Toast.makeText(context, "·Î±×ÀÎÀÌ ÇÊ¿äÇÕ´Ï´Ù.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "ë¡œê·¸ì¸ì´ í•„ìš”í•©ë‹ˆë‹¤.", Toast.LENGTH_SHORT).show()
             binding.btnSubmit.isEnabled = true
             return
         }
 
         lifecycleScope.launch {
             try {
-                // ÇĞ¹øÀº User ÄÃ·º¼Ç¿¡¼­ Á¶È¸
+                // í•™ë²ˆì€ User ì»¬ë ‰ì…˜ì—ì„œ ì¡°íšŒ
                 val userDoc = FirebaseFirestore.getInstance()
                     .collection("User").document(currentUser.uid).get().await()
 
                 val studentId = userDoc.getString("studentId") ?: userDoc.getString("userID")
                 if (studentId.isNullOrBlank()) {
-                    Toast.makeText(context, "»ç¿ëÀÚ Á¤º¸¸¦ Ã£À» ¼ö ¾ø½À´Ï´Ù.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "ì‚¬ìš©ì ì •ë³´ë¥¼ ì°¾ì„ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.", Toast.LENGTH_SHORT).show()
                     binding.btnSubmit.isEnabled = true
                     return@launch
                 }
@@ -115,18 +115,18 @@ class ReviewFragment : Fragment() {
                     equipment = getCheckedTexts(binding.layoutEquip)
                 )
 
-                // ¸®ºä Ãß°¡¸¦ Repository ·Î À§ÀÓ
+                // ë¦¬ë·° ì¶”ê°€ë¥¼ Repository ë¡œ ìœ„ì„
                 val success = ReviewRepository.addReview(review)
                 if (success) {
                     Log.d("ReviewFragment", "Review successfully submitted")
                     findNavController().navigate(R.id.action_reviewFragment_to_reviewCompleteFragment)
                 } else {
-                    Toast.makeText(context, "¸®ºä Á¦Ãâ¿¡ ½ÇÆĞÇß½À´Ï´Ù.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "ë¦¬ë·° ì œì¶œì— ì‹¤íŒ¨í–ˆìŠµë‹ˆë‹¤.", Toast.LENGTH_SHORT).show()
                     binding.btnSubmit.isEnabled = true
                 }
             } catch (e: Exception) {
                 Log.e("ReviewFragment", "Failed to fetch user info or submit review", e)
-                Toast.makeText(context, "¿À·ù°¡ ¹ß»ıÇß½À´Ï´Ù.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "ì˜¤ë¥˜ê°€ ë°œìƒí–ˆìŠµë‹ˆë‹¤.", Toast.LENGTH_SHORT).show()
                 binding.btnSubmit.isEnabled = true
             }
         }
