@@ -61,11 +61,17 @@ object HomeRepository {
      * 현재 예약 정보를 SharedPreferences에 저장합니다. (앱 재시작 시 리뷰 팝업 표시에 사용)
      */
     fun saveReservationPrefs(context: Context, endTimeMillis: Long, roomId: String) {
-        context.getSharedPreferences("ClassroomPrefs", Context.MODE_PRIVATE).edit().apply {
-            putLong("last_end_time", endTimeMillis)
-            putString("last_room_id", roomId)
-            putBoolean("has_shown_review", false)
-            apply()
+        val prefs = context.getSharedPreferences("ClassroomPrefs", Context.MODE_PRIVATE)
+        val savedEndTime = prefs.getLong("last_end_time", 0)
+        val savedRoomId = prefs.getString("last_room_id", null)
+
+        if (savedEndTime != endTimeMillis || savedRoomId != roomId) {
+            prefs.edit().apply {
+                putLong("last_end_time", endTimeMillis)
+                putString("last_room_id", roomId)
+                putBoolean("has_shown_review", false)
+                apply()
+            }
         }
     }
 }
