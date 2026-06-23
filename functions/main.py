@@ -1,6 +1,7 @@
 from firebase_functions import https_fn
 from firebase_admin import firestore, initialize_app, auth, credentials
-from openai import OpenAI
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -16,7 +17,8 @@ cred = credentials.Certificate(BASE_DIR / "serviceAccountKey.json")
 initialize_app(cred)
 
 db = firestore.client()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Vertex AI 모드를 사용하도록 클라이언트 설정 (인증 오류 방지)
+genai_client = genai.Client(vertexai=True, project="pickdreamtest", location="us-central1")
 
 KST = timezone(timedelta(hours=9))
 
@@ -31,6 +33,44 @@ def extract_room_id(text):
     return None
 
 
+# 방 식별자(이름, 번호, 문서 ID)로 Firestore 강의실 검색하는 헬퍼 함수
+def find_room(room_identifier):
+    if not room_identifier:
+        return None, None
+    
+    room_identifier = str(room_identifier).strip()
+    
+    # 1. 문서 ID로 직접 조회 시도
+    doc = db.collection("rooms").document(room_identifier).get()
+    if doc.exists:
+        return doc.id, doc.to_dict()
+        
+    # 2. 'name' 필드 매칭 시도
+    docs = db.collection("rooms").where("name", "==", room_identifier).get()
+    if docs:
+        return docs[0].id, docs[0].to_dict()
+        
+    # 3. 방 번호(숫자 추출)로 매칭 시도
+    room_num = extract_room_id(room_identifier)
+    if room_num:
+        all_rooms = db.collection("rooms").stream()
+        for r_doc in all_rooms:
+            r_data = r_doc.to_dict()
+            name = r_data.get("name", "")
+            if room_num in name:
+                return r_doc.id, r_data
+                
+    # 4. 부분 검색/퍼지 매칭 시도
+    all_rooms = db.collection("rooms").stream()
+    for r_doc in all_rooms:
+        r_data = r_doc.to_dict()
+        name = r_data.get("name", "")
+        if room_identifier in name or name in room_identifier:
+            return r_doc.id, r_data
+            
+    return None, None
+
+
 def has_conflict(field: str, value: str, start, end):
     conflicts = db.collection("Reservations") \
         .where("startTimestamp", "<", end) \
@@ -40,15 +80,16 @@ def has_conflict(field: str, value: str, start, end):
     return any(True for _ in conflicts)
 
 def handle_query_equipment(query, userID):
-    doc = db.collection("rooms").document(query["room"]).get()
-    if not doc.exists:
+    room_id, room_data = find_room(query.get("room"))
+    if not room_id:
         return https_fn.Response("강의실이 존재하지 않습니다.", status=404)
-    eq = doc.to_dict().get("equipment", [])
+    eq = room_data.get("equipment", [])
     item = query.get("item")
+    room_name = room_data.get("name", room_id)
     if not item or item in ["뭐", "무엇", "있는지", "있는가"]:
         eq_list = ", ".join(eq) if eq else "없음"
-        return https_fn.Response(f"{query['room']}호에 있는 기자재: {eq_list}", status=200)
-    return https_fn.Response(f"{query['room']}호에 '{item}'이(가) {'있습니다' if item in eq else '없습니다' }.", status=200)
+        return https_fn.Response(f"{room_name}에 있는 기자재: {eq_list}", status=200)
+    return https_fn.Response(f"{room_name}에 '{item}'이(가) {'있습니다' if item in eq else '없습니다' }.", status=200)
 
 
 def handle_reserve(query, userID):
@@ -57,19 +98,20 @@ def handle_reserve(query, userID):
         query["userID"] = userID
 
         room_raw = query.get("room")
-        query["room"] = extract_room_id(room_raw) if room_raw else None
+        room_id, room_data = find_room(room_raw)
 
-        if not query["room"] or not query.get("startTime") or not query.get("duration"):
+        if not room_id or not query.get("startTime") or not query.get("duration"):
             pending = db.collection("PendingReservations").document(userID).get()
             if pending.exists:
                 pending_data = pending.to_dict()
-                query["room"] = query["room"] or pending_data.get("room")
+                if not room_id:
+                    room_id, room_data = find_room(pending_data.get("room"))
                 query["startTime"] = query.get("startTime") or pending_data.get("startTime")
                 query["duration"] = query.get("duration") or pending_data.get("duration")
                 query["eventName"] = query.get("eventName") or pending_data.get("eventName", "추천 예약")
                 query["eventParticipants"] = query.get("eventParticipants") or pending_data.get("eventParticipants")
             else:
-                if not query["room"]:
+                if not room_id:
                     return https_fn.Response("강의실 정보를 확인할 수 없어요.", status=400)
                 now = datetime.now(KST)
                 query["startTime"] = (now + timedelta(minutes=10)).isoformat(timespec="seconds")
@@ -77,6 +119,11 @@ def handle_reserve(query, userID):
                 query["eventName"] = query.get("eventName", "추천 예약")
                 query["eventParticipants"] = query.get("eventParticipants")
                 logging.info("[handle_reserve] Pending 없이 기본값으로 예약 진행")
+
+        if not room_id:
+            return https_fn.Response("해당 강의실 정보를 확인할 수 없어요.", status=400)
+            
+        query["room"] = room_id
 
         query["eventName"] = "추천 예약"
         query["eventDescription"] = ""
@@ -110,13 +157,6 @@ def handle_reserve(query, userID):
             readable = ", ".join(friendly_names.get(f, f) for f in missing)
             return https_fn.Response(f"다음 정보가 필요해요: {readable}", status=400)
 
-        query["room"] = extract_room_id(query["room"]) or query["room"]
-
-        room_doc = db.collection("rooms").document(query["room"]).get()
-        if not room_doc.exists:
-            logging.warning(f"[handle_reserve] 존재하지 않는 강의실: {query['room']}")
-            return https_fn.Response("해당 강의실은 존재하지 않습니다.", status=404)
-
         try:
             query["duration"] = int(query["duration"])
             start = datetime.fromisoformat(query["startTime"])
@@ -138,7 +178,8 @@ def handle_reserve(query, userID):
         if has_conflict("userID", userID, start, end):
             return https_fn.Response("해당 시간에 이미 예약한 강의실이 있어요. 다른 시간대를 선택해 주세요.", status=409)
         if has_conflict("roomID", query["room"], start, end):
-            return https_fn.Response(f"{query['room']}호는 해당 시간에 이미 예약되어 있어요.", status=409)
+            room_name = room_data.get("name", query["room"])
+            return https_fn.Response(f"{room_name}은 해당 시간에 이미 예약되어 있어요.", status=409)
 
         try:
             # 안전하게 eventParticipants를 정수로 변환
@@ -174,7 +215,8 @@ def handle_reserve(query, userID):
             logging.warning(f"[handle_reserve] Pending 삭제 실패: {e}")
 
         logging.info(f"[handle_reserve] 예약 성공: {doc_ref[1].id}")
-        return https_fn.Response(f"{query['room']}호가 예약되었습니다 ✅", status=200)
+        room_name = room_data.get("name", query["room"])
+        return https_fn.Response(f"{room_name}이 예약되었습니다 ✅", status=200)
 
     except Exception as e:
         logging.exception("[handle_reserve] 최상위 예외 발생")
@@ -184,13 +226,13 @@ def handle_reserve(query, userID):
 
 def handle_cancel_reservation(query, userID):
     try:
-        room_id = extract_room_id(query.get("room", ""))
-        logging.info(f"[handle_cancel_reservation] room={room_id}, userID={userID}")
+        target_room_id, target_room_data = find_room(query.get("room"))
+        logging.info(f"[handle_cancel_reservation] target_room_id={target_room_id}, userID={userID}")
 
         # 가장 최근 예약 1건 조회 (startTime 기준)
         col = db.collection("Reservations").where("userID", "==", userID)
-        if room_id:
-            col = col.where("roomID", "==", room_id)
+        if target_room_id:
+            col = col.where("roomID", "==", target_room_id)
         
         # .limit(1)을 추가하여 가장 최근 예약 1건만 가져옴
         docs_query = col.order_by("startTimestamp", direction=firestore.Query.DESCENDING).limit(1)
@@ -207,10 +249,12 @@ def handle_cancel_reservation(query, userID):
 
         # 첫 번째 (가장 최근) 문서만 처리
         doc_to_delete = docs[0]
-        cancelled_room = doc_to_delete.to_dict().get("roomID", "해당 강의실")
+        cancelled_room_id = doc_to_delete.to_dict().get("roomID")
+        _, cancelled_room_data = find_room(cancelled_room_id)
+        cancelled_room_name = cancelled_room_data.get("name", cancelled_room_id) if cancelled_room_data else cancelled_room_id
         db.collection("Reservations").document(doc_to_delete.id).delete()
 
-        return https_fn.Response(f"{cancelled_room}호 예약이 취소되었습니다 ✅", status=200)
+        return https_fn.Response(f"{cancelled_room_name} 예약이 취소되었습니다 ✅", status=200)
 
     except Exception as e:
         logging.exception("[handle_cancel_reservation] 예외 발생")
@@ -235,8 +279,11 @@ def handle_my_reviews(query, userID):
     return https_fn.Response("\n\n".join(reply_lines), status=200)
 
 def handle_review_summary(query, userID):
-    room = query["room"]
-    docs = db.collection("Reviews").where("roomID", "==", room).stream()
+    room_id, room_data = find_room(query.get("room"))
+    if not room_id:
+        return https_fn.Response("강의실을 찾을 수 없습니다.", status=404)
+    room_name = room_data.get("name", room_id)
+    docs = db.collection("Reviews").where("roomID", "==", room_id).stream()
     ratings, pos_comments, neg_comments = [], [], []
     for r in docs:
         review = r.to_dict()
@@ -249,13 +296,13 @@ def handle_review_summary(query, userID):
             elif rating <= 2:
                 neg_comments.append(comment)
     if not ratings:
-        return https_fn.Response(f"{room}호에 등록된 후기가 없어요.", status=200)
+        return https_fn.Response(f"{room_name}에 등록된 후기가 없어요.", status=200)
     avg = round(sum(ratings) / len(ratings), 1)
     pos_ratio = round(len(pos_comments) / len(ratings) * 100)
     neg_ratio = 100 - pos_ratio
     pos_line = f'🟢 긍정 후기: "{pos_comments[-1]}"' if pos_comments else ""
     neg_line = f'🔴 부정 후기: "{neg_comments[-1]}"' if neg_comments else ""
-    summary = f"""[{room}호 강의실 평가 요약]
+    summary = f"""[{room_name} 강의실 평가 요약]
 {pos_line}
 {neg_line}
 ⭐ 평균 평점: {avg}점
@@ -318,7 +365,7 @@ def handle_recommend_room(query, userID):
     matched.sort(reverse=True)
     _, room_id, best = matched[0]
 
-    location = best.get("location", "정보 없음")
+    location = best.get("location") or best.get("buildingName") or "정보 없음"
     capacity = best.get("capacity", "정보 없음")
     equipment = ", ".join(best.get("equipment", [])) or "없음"
 
@@ -345,7 +392,7 @@ def handle_recommend_room(query, userID):
 
     response = f"""조건에 맞는 강의실을 찾아봤어요! 😊
 📍 위치: {location}
-🏫 강의실: {room_id}호 (최대 {capacity}명)
+🏫 강의실: {best.get("name", room_id)} (최대 {capacity}명)
 🛠️ 기자재: {equipment}"""
     if latest_comment:
         response += f'\n📝 최근 후기: "{latest_comment}"'
@@ -392,26 +439,33 @@ def handle_list_rooms_by_equipment(query, userID):
     return https_fn.Response(f"'{item}'이(가) 있는 강의실: {', '.join(room_ids)}", status=200)
 
 def handle_room_availability(query, userID):
-    room = query.get("room")
-    if not room:
-        return https_fn.Response("강의실 번호를 입력해 주세요.", status=400)
-    now = datetime.utcnow(KST)
+    room_id, room_data = find_room(query.get("room"))
+    if not room_id:
+        return https_fn.Response("강의실을 찾을 수 없습니다.", status=404)
+    room_name = room_data.get("name", room_id)
+    now = datetime.now(KST)
     one_day_later = now + timedelta(days=1)
     docs = db.collection("Reservations") \
-        .where("roomID", "==", room) \
-        .where("startTime", ">", now) \
-        .where("startTime", "<", one_day_later.isoformat()).stream()
+        .where("roomID", "==", room_id) \
+        .where("startTimestamp", ">", now) \
+        .where("startTimestamp", "<", one_day_later).stream()
     times = [d.to_dict().get("startTime", "?") for d in docs]
     if not times:
-        return https_fn.Response(f"{room}호는 앞으로 24시간 예약이 없습니다.", status=200)
-    return https_fn.Response(f"{room}호 예약 시간 목록: {', '.join(times)}", status=200)
+        return https_fn.Response(f"{room_name}은 앞으로 24시간 예약이 없습니다.", status=200)
+    return https_fn.Response(f"{room_name} 예약 시간 목록: {', '.join(times)}", status=200)
 
 def handle_my_reservations(query, userID):
     docs = db.collection("Reservations").where("userID", "==", userID).stream()
     res_list = []
+    rooms_cache = {}
+    for doc in db.collection("rooms").stream():
+        rooms_cache[doc.id] = doc.to_dict().get("name", doc.id)
+        
     for d in docs:
         data = d.to_dict()
-        res_list.append(f"{data.get('roomID', '?')}호 ({data.get('startTime', '?')} ~ {data.get('endTime', '?')})")
+        room_id = data.get('roomID')
+        room_name = rooms_cache.get(room_id, room_id)
+        res_list.append(f"{room_name} ({data.get('startTime', '?')} ~ {data.get('endTime', '?')})")
     if not res_list:
         return https_fn.Response("예약된 강의실이 없습니다.", status=200)
     return https_fn.Response("내 예약 내역:\n" + "\n".join(res_list), status=200)
@@ -608,19 +662,27 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
 - `"afterTime": "YYYY-MM-DDTHH:MM:SS"` 형태로 특정 시점 이후 가능한 강의실 추천 가능
 """
 
-
-        gpt = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_input}
-            ]
-        )
-
-        gpt_response_text = gpt.choices[0].message.content.strip()
+        # Gemini 모델 호출
+        try:
+            response = genai_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=user_input,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt
+                )
+            )
+            gpt_response_text = response.text.strip()
+            # 마크다운 코드 블록 제거 방어 코드
+            if gpt_response_text.startswith("```json"):
+                gpt_response_text = gpt_response_text.removeprefix("```json").removesuffix("```").strip()
+            elif gpt_response_text.startswith("```"):
+                gpt_response_text = gpt_response_text.removeprefix("```").removesuffix("```").strip()
+        except Exception as e:
+            logging.exception(f"[Gemini 호출 실패]: {e}")
+            return https_fn.Response("AI 서버가 혼잡하여 요청을 처리할 수 없어요.", status=500)
 
         logging.info(f"[user_input]: {user_input}")
-        logging.info(f"[gpt_response_text]: {gpt_response_text}")
+        logging.info(f"[gemini_response_text]: {gpt_response_text}")
 
         if not gpt_response_text.startswith("{") or not gpt_response_text.endswith("}"):
             logging.warning(f"[GPT 응답 JSON 아님]: {gpt_response_text}")
@@ -669,7 +731,9 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
             return https_fn.Response("죄송해요, 요청을 이해하지 못했어요 😥", status=400)
 
         if "room" in query and query["room"]:
-            query["room"] = extract_room_id(query["room"]) or query["room"]
+            room_id, _ = find_room(query["room"])
+            if room_id:
+                query["room"] = room_id
 
         if action == "recommend_room":
             response = handle_recommend_room(query, userID)

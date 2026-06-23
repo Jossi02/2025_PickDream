@@ -13,7 +13,7 @@ object FirebaseFunctionService {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private const val FUNCTION_URL =
-        "https://ai-assistant-yaluz6ij5a-uc.a.run.app"
+        "https://ai-assistant-sicwnrweaa-uc.a.run.app"
 
     fun sendMessageToFunction(
         message: String,

@@ -26,3 +26,6 @@ test.html
 firestore-debug.log
 app/*.json
 functions/*.json
+*.exe
+*.zip
+

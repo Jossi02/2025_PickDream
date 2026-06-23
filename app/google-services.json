@@ -1,14 +1,13 @@
 {
   "project_info": {
-    "project_number": "44233524912",
-    "firebase_url": "https://dream-18f9d-default-rtdb.asia-southeast1.firebasedatabase.app",
-    "project_id": "dream-18f9d",
-    "storage_bucket": "dream-18f9d.firebasestorage.app"
+    "project_number": "1045915547498",
+    "project_id": "pickdreamtest",
+    "storage_bucket": "pickdreamtest.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:44233524912:android:ce240027396e8f1ee2dd75",
+        "mobilesdk_app_id": "1:1045915547498:android:7bdf69e2a420a535d8d713",
         "android_client_info": {
           "package_name": "com.example.pick_dream"
         }
@@ -16,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBs4XKCwAcPoKLdXGnvgZixV_gebZ8LNMY"
+          "current_key": "AIzaSyAz-B0K2yUwJgQhZpb5DZK4LIMYXjbLZ0c"
         }
       ],
       "services": {
