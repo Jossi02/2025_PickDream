@@ -16,11 +16,10 @@ object ReviewRepository {
         return try {
             val snapshot = db.collection("Reviews")
                 .whereEqualTo("userID", studentId)
-                .orderBy("createdAt", Query.Direction.DESCENDING)
                 .get()
                 .await()
 
-            snapshot.toObjects(Review::class.java)
+            snapshot.toObjects(Review::class.java).sortedByDescending { it.createdAt }
         } catch (e: Exception) {
             emptyList()
         }
