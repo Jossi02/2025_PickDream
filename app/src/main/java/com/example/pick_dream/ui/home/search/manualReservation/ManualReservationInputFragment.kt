@@ -186,13 +186,8 @@ class ManualReservationInputFragment : Fragment() {
             .setCancelable(false)
             .create()
             
-        val background = android.graphics.drawable.GradientDrawable()
-        background.setColor(android.graphics.Color.WHITE)
-        val radius = resources.displayMetrics.density * 16
-        background.cornerRadius = radius
-        dialog.setOnShowListener {
-            dialog.window?.setBackgroundDrawable(background)
-        }
+        // The dialog background is now handled in XML (bg_rounded_16dp)
+        // and R.style.CustomDialog handles the transparent window background.
         
         dialogView.findViewById<TextView>(R.id.btnDialogOk).setOnClickListener {
             dialog.dismiss()

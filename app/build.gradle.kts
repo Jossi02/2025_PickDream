@@ -70,8 +70,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.navigation.fragment.ktx)
     implementation(libs.androidx.navigation.ui.ktx)
-    implementation(libs.firebase.database.ktx)
-    implementation(libs.firebase.database)
     implementation(libs.firebase.auth)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
@@ -79,13 +77,11 @@ dependencies {
     implementation(libs.firebase.firestore)
     implementation(libs.androidx.activity)
     implementation("com.google.android.gms:play-services-maps:19.2.0")
-    implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation ("androidx.viewpager2:viewpager2:1.1.0")
     implementation ("com.prolificinteractive:material-calendarview:1.4.3")
 
     // BoM을 사용하므로 아래 Firebase 라이브러리들은 버전을 명시하지 않습니다.
     implementation("com.google.firebase:firebase-functions-ktx")
-    implementation("com.google.firebase:firebase-storage-ktx")
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
 
     implementation("com.squareup.picasso:picasso:2.71828")
