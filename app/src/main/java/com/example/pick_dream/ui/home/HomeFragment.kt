@@ -55,6 +55,10 @@ class HomeFragment : Fragment() {
             button.setOnClickListener { onButtonClick(it) }
         }
 
+        binding.btnNotice.setOnClickListener {
+            findNavController().navigate(R.id.action_homeFragment_to_noticeFragment)
+        }
+
         binding.cardReservationInfo.setOnClickListener {
             findNavController().navigate(R.id.action_homeFragment_to_reservationFragment)
         }
@@ -184,28 +188,28 @@ class HomeFragment : Fragment() {
                             .toInt().coerceIn(0, 100)
 
                         binding.pbReservationProgress.progress = progress
-                        binding.tvProgressPercentage.text = "%"
+                        binding.tvProgressPercentage.text = "${progress}%"
 
                         val hours = TimeUnit.MILLISECONDS.toHours(remainingMillis)
                         val minutes = TimeUnit.MILLISECONDS.toMinutes(remainingMillis) % 60
                         binding.tvRemainingTime.text = if (hours > 0) {
-                            String.format("%d�ð� %d�� �� ����", hours, minutes)
+                            String.format("%d시간 %d분 남음", hours, minutes)
                         } else {
-                            String.format("%d�� �� ����", minutes)
+                            String.format("%d분 남음", minutes)
                         }
-                        handler.postDelayed(this, 30_000L) // 30�ʸ��� ������Ʈ
+                        handler.postDelayed(this, 30_000L) // 30초마다 업데이트
                     } else {
                         loadMyReservation()
                     }
-                } else { // ���� ��� ��
+                } else { // 예약 대기 중
                     val remainingMillis = startCal.timeInMillis - now.timeInMillis
                     if (remainingMillis > 0) {
                         val hours = TimeUnit.MILLISECONDS.toHours(remainingMillis)
                         val minutes = TimeUnit.MILLISECONDS.toMinutes(remainingMillis) % 60
                         binding.pbReservationProgress.progress = 0
-                        binding.tvProgressPercentage.text = "������"
-                        binding.tvRemainingTime.text = String.format("%d�ð� %d�� �� ����", hours, minutes)
-                        handler.postDelayed(this, 60_000L) // 1�и��� ������Ʈ
+                        binding.tvProgressPercentage.text = "대기중"
+                        binding.tvRemainingTime.text = String.format("%d시간 %d분 뒤 시작", hours, minutes)
+                        handler.postDelayed(this, 60_000L) // 1분마다 업데이트
                     } else {
                         loadMyReservation()
                     }
