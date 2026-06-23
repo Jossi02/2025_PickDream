@@ -13,8 +13,8 @@ import logging
 # 환경 설정
 load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
-cred = credentials.Certificate(BASE_DIR / "serviceAccountKey.json")
-initialize_app(cred)
+# cred = credentials.Certificate(BASE_DIR / "serviceAccountKey.json")
+initialize_app()
 
 db = firestore.client()
 # Vertex AI 모드를 사용하도록 클라이언트 설정 (인증 오류 방지)
