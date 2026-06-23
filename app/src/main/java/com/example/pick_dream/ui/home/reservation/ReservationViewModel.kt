@@ -66,6 +66,7 @@ class ReservationViewModel : ViewModel() {
                 }
 
                 upcoming.sortBy { parseFlexibleDate(it.startTime)?.time ?: Long.MAX_VALUE }
+                past.sortByDescending { parseFlexibleDate(it.startTime)?.time ?: 0L }
 
                 val items = mutableListOf<ReservationListItem>()
                 if (upcoming.isNotEmpty()) {

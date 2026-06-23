@@ -17,7 +17,7 @@ object ReservationRepository {
         return try {
             val snapshot = db.collection("Reservations")
                 .whereEqualTo("userID", studentId)
-                .orderBy("startTime", Query.Direction.DESCENDING)
+                // 인덱스 오류 방지를 위해 orderBy 제거 후 앱 단에서 정렬
                 .get()
                 .await()
 

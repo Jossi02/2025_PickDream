@@ -135,7 +135,7 @@ class ManualReservationInputFragment : Fragment() {
         // 혹은 UserViewModel 도입 시 개선 가능하지만 일단 Firestore 직접 접근으로 유지하거나 개선)
         db.collection("User").document(currentUser.uid).get()
             .addOnSuccessListener { document ->
-                val studentId = document.getString("studentId") ?: ""
+                val studentId = document.getString("studentId") ?: document.getString("userID") ?: ""
                 if (studentId.isBlank()) {
                     Toast.makeText(context, "학번 정보를 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
                     return@addOnSuccessListener
