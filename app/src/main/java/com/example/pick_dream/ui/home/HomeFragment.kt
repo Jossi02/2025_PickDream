@@ -15,6 +15,9 @@ import com.example.pick_dream.model.Reservation
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.firebase.firestore.FirebaseFirestore
 import com.squareup.picasso.Picasso
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import com.example.pick_dream.ui.home.notice.NoticeRepository
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -38,7 +41,7 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // µ¥ÀÌÅÍ ·Îµù Àü, ¿¹¾à Á¤º¸ °ü·Ã ºäµéÀ» ¹Ì¸® ¼û±è
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Îµï¿½ ï¿½ï¿½, ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ì¸ï¿½ ï¿½ï¿½ï¿½ï¿½
         binding.layoutReservationDetails.visibility = View.INVISIBLE
         binding.layoutNoReservation.visibility = View.INVISIBLE
         binding.flReservationStatusVisual.visibility = View.INVISIBLE
@@ -59,7 +62,7 @@ class HomeFragment : Fragment() {
     }
 
     private fun onButtonClick(view: View) {
-        val originalColor = ContextCompat.getColor(requireContext(), R.color.button_normal)
+        val originalColor = ContextCompat.getColor(requireContext(), R.color.white)
         val clickedColor = ContextCompat.getColor(requireContext(), R.color.button_clicked)
 
         view.setBackgroundColor(clickedColor)
@@ -81,11 +84,25 @@ class HomeFragment : Fragment() {
             navView?.selectedItemId = R.id.navigation_home
         }
         loadMyReservation()
+        loadLatestNotice()
+    }
+
+    private fun loadLatestNotice() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val notice = NoticeRepository.fetchLatestNotice()
+            if (_binding == null || !isAdded) return@launch
+            
+            if (notice != null) {
+                binding.tvNoticeLatest.text = notice.title
+            } else {
+                binding.tvNoticeLatest.text = "ë“±ë¡ëœ ê³µì§€ì‚¬í•­ì´ ì—†ìŠµë‹ˆë‹¤."
+            }
+        }
     }
 
     /**
-     * HomeRepository¸¦ ÅëÇØ ¿¹¾à Á¤º¸¸¦ °¡Á®¿Í UI¸¦ ¾÷µ¥ÀÌÆ®ÇÕ´Ï´Ù.
-     * DB Åë½Å ·ÎÁ÷Àº HomeRepository¿¡ À§ÀÓÇÕ´Ï´Ù.
+     * HomeRepositoryï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ UIï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®ï¿½Õ´Ï´ï¿½.
+     * DB ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ HomeRepositoryï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Õ´Ï´ï¿½.
      */
     private fun loadMyReservation() {
         handler.removeCallbacksAndMessages(null)
@@ -109,13 +126,13 @@ class HomeFragment : Fragment() {
         binding.layoutReservationDetails.visibility = View.VISIBLE
         binding.flReservationStatusVisual.visibility = View.VISIBLE
 
-        // °­ÀÇ½Ç ÀÌ¹ÌÁö ¹× ÀÌ¸§ ·Îµå
+        // ï¿½ï¿½ï¿½Ç½ï¿½ ï¿½Ì¹ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½Ì¸ï¿½ ï¿½Îµï¿½
         val roomIdOnly = reservation.roomID.replace(Regex("[^0-9]"), "")
         FirebaseFirestore.getInstance().collection("rooms").document(roomIdOnly).get()
             .addOnSuccessListener { roomDoc ->
                 if (_binding == null || !isAdded) return@addOnSuccessListener
                 if (roomDoc.exists()) {
-                    binding.tvReservationRoom.text = "¿¹¾à Àå¼Ò : "
+                    binding.tvReservationRoom.text = "ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ : "
                     val imageUrl = roomDoc.getString("image")
                     if (!imageUrl.isNullOrEmpty()) {
                         Picasso.get().load(imageUrl).into(binding.ivRoomBackground)
@@ -123,7 +140,7 @@ class HomeFragment : Fragment() {
                         binding.ivRoomBackground.setImageResource(R.drawable.sample_room)
                     }
                 } else {
-                    binding.tvReservationRoom.text = "¿¹¾à Àå¼Ò : "
+                    binding.tvReservationRoom.text = "ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ : "
                     binding.ivRoomBackground.setImageResource(R.drawable.sample_room)
                 }
             }
@@ -132,9 +149,9 @@ class HomeFragment : Fragment() {
         val endCal = reservation.endTime?.let { parseKoreanDateToCalendar(it) }
 
         if (startCal != null && endCal != null) {
-            binding.tvReservationTime.text = "´ë¿© ½Ã°£ :  - "
+            binding.tvReservationTime.text = "ï¿½ë¿© ï¿½Ã°ï¿½ :  - "
 
-            // ÇöÀç ¿¹¾à Á¤º¸ SharedPreferences¿¡ ÀúÀå (Repository¿¡ À§ÀÓ)
+            // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ SharedPreferencesï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ (Repositoryï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
             HomeRepository.saveReservationPrefs(requireContext(), endCal.timeInMillis, reservation.roomID)
 
             startCountdownTimer(startCal, endCal)
@@ -142,7 +159,7 @@ class HomeFragment : Fragment() {
     }
 
     /**
-     * ¿¹¾à ³²Àº ½Ã°£ Ä«¿îÆ®´Ù¿î Å¸ÀÌ¸Ó¸¦ ½ÃÀÛÇÕ´Ï´Ù.
+     * ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ã°ï¿½ Ä«ï¿½ï¿½Æ®ï¿½Ù¿ï¿½ Å¸ï¿½Ì¸Ó¸ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Õ´Ï´ï¿½.
      */
     private fun startCountdownTimer(startCal: Calendar, endCal: Calendar) {
         timerRunnable = object : Runnable {
@@ -163,23 +180,23 @@ class HomeFragment : Fragment() {
                         val hours = TimeUnit.MILLISECONDS.toHours(remainingMillis)
                         val minutes = TimeUnit.MILLISECONDS.toMinutes(remainingMillis) % 60
                         binding.tvRemainingTime.text = if (hours > 0) {
-                            String.format("%d½Ã°£ %dºÐ ÈÄ Á¾·á", hours, minutes)
+                            String.format("%dï¿½Ã°ï¿½ %dï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½", hours, minutes)
                         } else {
-                            String.format("%dºÐ ÈÄ Á¾·á", minutes)
+                            String.format("%dï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½", minutes)
                         }
-                        handler.postDelayed(this, 30_000L) // 30ÃÊ¸¶´Ù ¾÷µ¥ÀÌÆ®
+                        handler.postDelayed(this, 30_000L) // 30ï¿½Ê¸ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®
                     } else {
                         loadMyReservation()
                     }
-                } else { // ¿¹¾à ´ë±â Áß
+                } else { // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½
                     val remainingMillis = startCal.timeInMillis - now.timeInMillis
                     if (remainingMillis > 0) {
                         val hours = TimeUnit.MILLISECONDS.toHours(remainingMillis)
                         val minutes = TimeUnit.MILLISECONDS.toMinutes(remainingMillis) % 60
                         binding.pbReservationProgress.progress = 0
-                        binding.tvProgressPercentage.text = "¿¹¾à´ë±â"
-                        binding.tvRemainingTime.text = String.format("%d½Ã°£ %dºÐ ÈÄ ½ÃÀÛ", hours, minutes)
-                        handler.postDelayed(this, 60_000L) // 1ºÐ¸¶´Ù ¾÷µ¥ÀÌÆ®
+                        binding.tvProgressPercentage.text = "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½"
+                        binding.tvRemainingTime.text = String.format("%dï¿½Ã°ï¿½ %dï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½", hours, minutes)
+                        handler.postDelayed(this, 60_000L) // 1ï¿½Ð¸ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®
                     } else {
                         loadMyReservation()
                     }
@@ -201,16 +218,16 @@ class HomeFragment : Fragment() {
     }
 }
 
-// --- ³¯Â¥ ÆÄ½Ì À¯Æ¿ ÇÔ¼ö ---
+// --- ï¿½ï¿½Â¥ ï¿½Ä½ï¿½ ï¿½ï¿½Æ¿ ï¿½Ô¼ï¿½ ---
 
 /**
- * Firestore¿¡ ÀúÀåµÈ ÇÑ±¹¾î ³¯Â¥ ¹®ÀÚ¿­À» Calendar °´Ã¼·Î º¯È¯ÇÕ´Ï´Ù.
- * ÃÊ(second) Æ÷ÇÔ Çü½Ä°ú ¹ÌÆ÷ÇÔ Çü½Ä ¸ðµÎ Áö¿øÇÕ´Ï´Ù.
+ * Firestoreï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ñ±ï¿½ï¿½ï¿½ ï¿½ï¿½Â¥ ï¿½ï¿½ï¿½Ú¿ï¿½ï¿½ï¿½ Calendar ï¿½ï¿½Ã¼ï¿½ï¿½ ï¿½ï¿½È¯ï¿½Õ´Ï´ï¿½.
+ * ï¿½ï¿½(second) ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ä°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Õ´Ï´ï¿½.
  */
 fun parseKoreanDateToCalendar(dateStr: String): Calendar? {
     val formats = listOf(
-        SimpleDateFormat("yyyy³â M¿ù dÀÏ a h½Ã mºÐ sÃÊ 'UTC+9'", Locale.KOREAN),
-        SimpleDateFormat("yyyy³â M¿ù dÀÏ a h½Ã mºÐ", Locale.KOREAN)
+        SimpleDateFormat("yyyyï¿½ï¿½ Mï¿½ï¿½ dï¿½ï¿½ a hï¿½ï¿½ mï¿½ï¿½ sï¿½ï¿½ 'UTC+9'", Locale.KOREAN),
+        SimpleDateFormat("yyyyï¿½ï¿½ Mï¿½ï¿½ dï¿½ï¿½ a hï¿½ï¿½ mï¿½ï¿½", Locale.KOREAN)
     )
     for (format in formats) {
         try {

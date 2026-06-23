@@ -33,4 +33,32 @@ object NoticeRepository {
             emptyList()
         }
     }
+
+    /**
+     * Firestore에서 가장 최근 공지사항 1개를 가져옵니다.
+     */
+    suspend fun fetchLatestNotice(): Notice? {
+        return try {
+            val result = db.collection("Notices")
+                .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                .limit(1)
+                .get().await()
+            if (!result.isEmpty) {
+                val doc = result.documents[0]
+                val timestamp = doc.getTimestamp("createdAt")
+                val formattedDate = timestamp?.toDate()?.let { formatter.format(it) } ?: ""
+                Notice(
+                    id = doc.id,
+                    iconEmoji = "📢",
+                    title = doc.getString("title") ?: "",
+                    date = formattedDate,
+                    content = doc.getString("content") ?: ""
+                )
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
 }

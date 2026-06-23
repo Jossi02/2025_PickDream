@@ -60,12 +60,15 @@
                     android:layout_marginEnd="8dp" />
 
                 <TextView
+                    android:id="@+id/tvNoticeLatest"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="[공지사항] 덕문관 5001 강의실 대여 불가 안내"
+                    android:text="최신 공지사항을 불러오는 중..."
                     android:textSize="14sp"
-                    android:textColor="#666666" />
+                    android:textColor="#666666"
+                    android:ellipsize="end"
+                    android:maxLines="1" />
 
                 <!-- 공지사항 전체보기 버튼 -->
                 <com.google.android.material.button.MaterialButton
