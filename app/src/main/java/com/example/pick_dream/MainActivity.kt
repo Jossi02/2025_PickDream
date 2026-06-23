@@ -3,91 +3,83 @@ package com.example.pick_dream
 import android.content.Context
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import com.example.pick_dream.databinding.ActivityMainBinding
+import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
+import com.example.pick_dream.databinding.ActivityMainBinding
 import com.example.pick_dream.ui.home.search.LectureRoomRepository
 import com.google.android.material.bottomnavigation.BottomNavigationView
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    private lateinit var navController: NavController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // ì•± ì‹œì‘ ì‹œ ê°•ì˜ì‹¤ ë° ì°œ ëª©ë¡ ë°ì´í„° ë¯¸ë¦¬ ë¡œë“œ
+        // ¾Û ½ÃÀÛ ½Ã °­ÀÇ½Ç ¹× Âò ¸ñ·Ï µ¥ÀÌÅÍ ¹Ì¸® ·Îµå
         LectureRoomRepository.fetchRooms()
         LectureRoomRepository.fetchFavoriteIds()
 
-        checkClassroomUsageTime()
-
-        val navView: BottomNavigationView = binding.navView
-
-        navView.menu.findItem(R.id.navigation_home).setIcon(R.drawable.ic_home)
-        navView.menu.findItem(R.id.navigation_favorite).setIcon(R.drawable.ic_favorite)
-        navView.menu.findItem(R.id.navigation_mypage).setIcon(R.drawable.ic_mypage)
-
-        if (navView.selectedItemId == R.id.navigation_home) {
-            navView.menu.findItem(R.id.navigation_home).setIcon(R.drawable.ic_home_filled)
-        }
-
         val navHostFragment = supportFragmentManager
             .findFragmentById(R.id.nav_host_fragment_activity_main) as NavHostFragment
-        val navController = navHostFragment.navController
+        navController = navHostFragment.navController
+
+        setupBottomNavigation()
+        checkClassroomUsageTime()
+    }
+
+    /**
+     * BottomNavigationView ¾ÆÀÌÄÜ ¹× ÅÇ ¼±ÅÃ ÀÌº¥Æ®¸¦ ¼³Á¤ÇÕ´Ï´Ù.
+     */
+    private fun setupBottomNavigation() {
+        val navView: BottomNavigationView = binding.navView
+        updateNavIcons(navView, navView.selectedItemId)
 
         navView.setOnItemSelectedListener { item ->
-            navView.menu.findItem(R.id.navigation_home).setIcon(R.drawable.ic_home)
-            navView.menu.findItem(R.id.navigation_favorite).setIcon(R.drawable.ic_favorite)
-            navView.menu.findItem(R.id.navigation_mypage).setIcon(R.drawable.ic_mypage)
-
+            updateNavIcons(navView, item.itemId)
             when (item.itemId) {
-                R.id.navigation_home -> {
-                    navView.menu.findItem(R.id.navigation_home).setIcon(R.drawable.ic_home_filled)
-                    navController.navigate(R.id.homeFragment)
-                    true
-                }
-                R.id.navigation_favorite -> {
-                    navView.menu.findItem(R.id.navigation_favorite).setIcon(R.drawable.ic_favorite_filled)
-                    navController.navigate(R.id.favoriteFragment)
-                    true
-                }
-                R.id.navigation_mypage -> {
-                    navView.menu.findItem(R.id.navigation_mypage).setIcon(R.drawable.ic_mypage_filled)
-                    navController.navigate(R.id.mypageFragment)
-                    true
-                }
-                else -> false
+                R.id.navigation_home -> navController.navigate(R.id.homeFragment)
+                R.id.navigation_favorite -> navController.navigate(R.id.favoriteFragment)
+                R.id.navigation_mypage -> navController.navigate(R.id.mypageFragment)
             }
+            true
         }
     }
 
+    /**
+     * ¼±ÅÃµÈ ÅÇ¿¡ ¸Â°Ô BottomNavigationViewÀÇ ¾ÆÀÌÄÜÀ» filled/outlineÀ¸·Î ±³Ã¼ÇÕ´Ï´Ù.
+     * @param navView ´ë»ó BottomNavigationView
+     * @param selectedId ÇöÀç ¼±ÅÃµÈ ¸Ş´º ¾ÆÀÌÅÛ ID
+     */
+    private fun updateNavIcons(navView: BottomNavigationView, selectedId: Int) {
+        navView.menu.findItem(R.id.navigation_home).setIcon(
+            if (selectedId == R.id.navigation_home) R.drawable.ic_home_filled else R.drawable.ic_home
+        )
+        navView.menu.findItem(R.id.navigation_favorite).setIcon(
+            if (selectedId == R.id.navigation_favorite) R.drawable.ic_favorite_filled else R.drawable.ic_favorite
+        )
+        navView.menu.findItem(R.id.navigation_mypage).setIcon(
+            if (selectedId == R.id.navigation_mypage) R.drawable.ic_mypage_filled else R.drawable.ic_mypage
+        )
+    }
+
+    /**
+     * ¾Û Àç½ÃÀÛ ½Ã, °­ÀÇ½Ç »ç¿ë Á¾·á ÈÄ ¸®ºä¸¦ ¾ÆÁ÷ º¸¿©ÁÖÁö ¾Ê¾Ò´Ù¸é ReviewFragment·Î ÀÌµ¿ÇÕ´Ï´Ù.
+     */
     private fun checkClassroomUsageTime() {
         val sharedPrefs = getSharedPreferences("ClassroomPrefs", Context.MODE_PRIVATE)
         val lastEndTime = sharedPrefs.getLong("last_end_time", 0)
         val hasShownReview = sharedPrefs.getBoolean("has_shown_review", false)
         val lastRoomId = sharedPrefs.getString("last_room_id", null)
-
         val currentTime = System.currentTimeMillis()
 
         if (lastRoomId != null && lastEndTime > 0 && !hasShownReview && currentTime > lastEndTime) {
-            val navHostFragment = supportFragmentManager
-                .findFragmentById(R.id.nav_host_fragment_activity_main) as NavHostFragment
-            val navController = navHostFragment.navController
-            
-            // ReviewFragmentë¡œ roomId ì „ë‹¬
-            val bundle = Bundle()
-            bundle.putString("roomId", lastRoomId)
+            val bundle = Bundle().apply { putString("roomId", lastRoomId) }
             navController.navigate(R.id.reviewFragment, bundle)
-
-            with(sharedPrefs.edit()) {
-                putBoolean("has_shown_review", true)
-                // ì„ íƒ: ë¦¬ë·° ì°½ì„ ë³´ì—¬ì¤€ í›„ì—ëŠ” last_end_timeì„ ì´ˆê¸°í™”í•˜ì—¬ ì¤‘ë³µ ì‹¤í–‰ ë°©ì§€
-                // remove("last_end_time")
-                // remove("last_room_id")
-                apply()
-            }
+            sharedPrefs.edit().putBoolean("has_shown_review", true).apply()
         }
     }
 }
