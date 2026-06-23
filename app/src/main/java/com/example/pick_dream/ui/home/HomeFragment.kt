@@ -53,7 +53,7 @@ class HomeFragment : Fragment() {
         listOf(binding.btnLlm, binding.btnSearch, binding.btnInquiry, binding.btnMap).forEach { button ->
             button.setOnClickListener { onButtonClick(it) }
         }
-        binding.btnNotice.setOnClickListener {
+        binding.layoutNoticeBar.setOnClickListener {
             findNavController().navigate(R.id.action_homeFragment_to_noticeFragment)
         }
         binding.cardReservationInfo.setOnClickListener {
