@@ -137,4 +137,25 @@ object LectureRoomRepository {
                 .addOnFailureListener { e -> Log.e("LectureRoomRepo", "Error adding favorite", e) }
         }
     }
+
+    /**
+     * 이름으로 강의실 단건을 조회합니다. ViewModel에서 캐시 미스 발생 시 사용합니다.
+     * @param roomName 조회할 강의실 이름
+     * @param onResult 조회 결과 콜백
+     */
+    fun fetchRoomByName(roomName: String, onResult: (LectureRoom?) -> Unit) {
+        db.collection("rooms")
+            .whereEqualTo("name", roomName)
+            .get()
+            .addOnSuccessListener { documents ->
+                val room = documents.firstOrNull()?.let { doc ->
+                    doc.toObject<LectureRoom>().copy(id = doc.id)
+                }
+                onResult(room)
+            }
+            .addOnFailureListener {
+                Log.e("LectureRoomRepo", "Error fetching room by name: $roomName", it)
+                onResult(null)
+            }
+    }
 }

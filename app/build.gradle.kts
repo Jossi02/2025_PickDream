@@ -59,7 +59,7 @@ dependencies {
 
     // Firebase BoM(Bill of Materials) 추가
     // BoM을 사용하면 Firebase 라이브러리의 버전을 명시하지 않아도 호환되는 버전이 자동으로 설정됩니다.
-    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation(platform("com.google.firebase:firebase-bom:33.14.0"))
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(libs.androidx.core.ktx)
