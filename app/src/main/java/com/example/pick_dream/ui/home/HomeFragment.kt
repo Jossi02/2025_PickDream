@@ -137,13 +137,13 @@ class HomeFragment : Fragment() {
         binding.layoutReservationDetails.visibility = View.VISIBLE
         binding.flReservationStatusVisual.visibility = View.VISIBLE
 
-        // ���ǽ� �̹��� �� �̸� �ε�
         val roomIdOnly = reservation.roomID.replace(Regex("[^0-9]"), "")
         FirebaseFirestore.getInstance().collection("rooms").document(roomIdOnly).get()
             .addOnSuccessListener { roomDoc ->
                 if (_binding == null || !isAdded) return@addOnSuccessListener
                 if (roomDoc.exists()) {
-                    binding.tvReservationRoom.text = "���� ��� : "
+                    val roomName = roomDoc.getString("name") ?: roomIdOnly
+                    binding.tvReservationRoom.text = "대여 장소 : $roomName"
                     val imageUrl = roomDoc.getString("image")
                     if (!imageUrl.isNullOrEmpty()) {
                         Picasso.get().load(imageUrl).into(binding.ivRoomBackground)
@@ -151,7 +151,7 @@ class HomeFragment : Fragment() {
                         binding.ivRoomBackground.setImageResource(R.drawable.sample_room)
                     }
                 } else {
-                    binding.tvReservationRoom.text = "���� ��� : "
+                    binding.tvReservationRoom.text = "대여 장소 : $roomIdOnly"
                     binding.ivRoomBackground.setImageResource(R.drawable.sample_room)
                 }
             }
@@ -160,9 +160,9 @@ class HomeFragment : Fragment() {
         val endCal = reservation.endTime?.let { parseKoreanDateToCalendar(it) }
 
         if (startCal != null && endCal != null) {
-            binding.tvReservationTime.text = "�뿩 �ð� :  - "
+            binding.tvReservationTime.text = "대여 시간 : ${formatKoreanTime(startCal)} - ${formatKoreanTime(endCal)}"
 
-            // ���� ���� ���� SharedPreferences�� ���� (Repository�� ����)
+            // 예약 만료 알림 설정을 SharedPreferences에 저장 (Repository를 사용)
             HomeRepository.saveReservationPrefs(requireContext(), endCal.timeInMillis, reservation.roomID)
 
             startCountdownTimer(startCal, endCal)
