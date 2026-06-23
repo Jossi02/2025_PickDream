@@ -53,9 +53,6 @@ class HomeFragment : Fragment() {
         listOf(binding.btnLlm, binding.btnSearch, binding.btnInquiry, binding.btnMap).forEach { button ->
             button.setOnClickListener { onButtonClick(it) }
         }
-        binding.layoutNoticeBar.setOnClickListener {
-            findNavController().navigate(R.id.action_homeFragment_to_noticeFragment)
-        }
         binding.cardReservationInfo.setOnClickListener {
             findNavController().navigate(R.id.action_homeFragment_to_reservationFragment)
         }
@@ -94,8 +91,17 @@ class HomeFragment : Fragment() {
             
             if (notice != null) {
                 binding.tvNoticeLatest.text = notice.title
+                binding.layoutNoticeBar.setOnClickListener {
+                    val action = HomeFragmentDirections.actionHomeFragmentToNoticeDetailFragment(
+                        title = notice.title,
+                        date = notice.date,
+                        content = notice.content
+                    )
+                    findNavController().navigate(action)
+                }
             } else {
                 binding.tvNoticeLatest.text = "등록된 공지사항이 없습니다."
+                binding.layoutNoticeBar.setOnClickListener(null)
             }
         }
     }

@@ -19,6 +19,9 @@
             android:id="@+id/action_homeFragment_to_noticeFragment"
             app:destination="@id/noticeFragment" />
         <action
+            android:id="@+id/action_homeFragment_to_noticeDetailFragment"
+            app:destination="@id/noticeDetailFragment" />
+        <action
             android:id="@+id/action_homeFragment_to_reservationFragment"
             app:destination="@id/reservationFragment" />
         <action
