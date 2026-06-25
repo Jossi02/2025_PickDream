@@ -8,9 +8,9 @@
     <!-- 상단 타이틀 -->
     <RelativeLayout
         android:layout_width="match_parent"
-        android:layout_height="80dp"
+        android:layout_height="110dp"
         android:background="#3C5ABD"
-        android:paddingTop="0dp"
+        android:paddingTop="30dp"
         android:paddingHorizontal="16dp">
 
         <TextView
@@ -39,7 +39,7 @@
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginTop="100dp"
+        android:layout_marginTop="110dp"
         android:fillViewport="true">
 
         <LinearLayout
