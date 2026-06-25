@@ -72,10 +72,21 @@ class LectureRoomDetailFragment : Fragment() {
             binding.btnReserve.setBackgroundColor(bgColor)
             binding.btnReserve.setTextColor(textColor)
 
-            binding.btnFavorite.isSelected = room.isFavorite
+            val updateFavoriteUi = { isFav: Boolean ->
+                if (isFav) {
+                    binding.btnFavorite.setImageResource(R.drawable.ic_heart_filled)
+                    binding.btnFavorite.setColorFilter(ContextCompat.getColor(requireContext(), R.color.Red))
+                } else {
+                    binding.btnFavorite.setImageResource(R.drawable.ic_heart_border)
+                    binding.btnFavorite.clearColorFilter()
+                }
+            }
+
+            updateFavoriteUi(room.isFavorite)
             binding.btnFavorite.setOnClickListener {
-                LectureRoomRepository.toggleFavorite(room.name)
-                it.isSelected = !it.isSelected
+                LectureRoomRepository.toggleFavorite(room.id)
+                room.isFavorite = !room.isFavorite
+                updateFavoriteUi(room.isFavorite)
             }
         }
 
