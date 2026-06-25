@@ -8,15 +8,15 @@
     <!-- 상단 타이틀 -->
     <RelativeLayout
         android:layout_width="match_parent"
-        android:layout_height="100dp"
+        android:layout_height="80dp"
         android:background="#3C5ABD"
-        android:paddingTop="8dp"
+        android:paddingTop="0dp"
         android:paddingHorizontal="16dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="0dp"
             android:gravity="center"
             android:text="설정"
             android:textSize="28sp"
@@ -28,7 +28,7 @@
             android:id="@+id/backButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_marginTop="30dp"
+            android:layout_centerVertical="true"
             android:padding="12dp"
             android:src="@drawable/ic_arrow_back"
             android:background="@android:color/transparent"
