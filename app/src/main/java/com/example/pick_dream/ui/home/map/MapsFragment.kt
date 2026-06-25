@@ -81,21 +81,6 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
         setupMap()
         setupUI()
         setupBackPress()
-        setupSearchAutoComplete()
-
-        val placeNames = places.map { it.name }
-        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, placeNames)
-        val searchInput = view.findViewById<AutoCompleteTextView>(R.id.searchInput)
-        searchInput.setAdapter(adapter)
-
-        searchInput.setOnItemClickListener { _, _, position, _ ->
-            val selectedPlaceName = adapter.getItem(position)
-            val selectedPlace = places.find { it.name == selectedPlaceName }
-            if (selectedPlace != null) {
-                map?.animateCamera(CameraUpdateFactory.newLatLngZoom(selectedPlace.latLng, 16f))
-                showPlaceInfo(selectedPlace)
-            }
-        }
         
         loadDynamicMapData()
     }
@@ -237,23 +222,7 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
         )
     }
 
-    private fun setupSearchAutoComplete() {
-        val placeNames = places.map { it.name }
-        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, placeNames)
-        binding.searchInput.setAdapter(adapter)
-        binding.searchInput.threshold = 1
-        binding.searchInput.addTextChangedListener {
-            binding.searchInput.showDropDown()
-        }
-        binding.searchInput.setOnItemClickListener { parent, _, position, _ ->
-            val selectedName = parent.getItemAtPosition(position) as String
-            val selectedPlace = places.find { it.name == selectedName }
-            selectedPlace?.let {
-                map?.animateCamera(CameraUpdateFactory.newLatLngZoom(it.latLng, 17f))
-                showPlaceInfo(it)
-            }
-        }
-    }
+
 
     private fun navigateToHome() {
         findNavController().navigate(
