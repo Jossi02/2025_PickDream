@@ -42,7 +42,7 @@ class FavoriteRoomsAdapter(
 
         fun bind(room: LectureRoom) {
             roomNumberTextView.text = room.name
-            buildingTextView.text = "${room.buildingName} (${room.buildingDetail})"
+            buildingTextView.text = room.displayBuildingName
             facilitiesTextView.text = room.equipment.joinToString(", ")
             
             favoriteButton.setImageResource(R.drawable.ic_heart_filled)

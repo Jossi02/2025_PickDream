@@ -20,4 +20,15 @@ data class LectureRoom(
     @get:PropertyName("isAvailable") @set:PropertyName("isAvailable")
     var isRentalAvailable: Boolean = false,
     val imageUrl: String? = null
-) : Parcelable
+) : Parcelable {
+    val displayBuildingName: String
+        get() {
+            val detail = buildingDetail.takeIf { it.isNotBlank() } ?: when (buildingName) {
+                "덕문관" -> "5강의동"
+                "집현관" -> "7강의동"
+                "예지관" -> "4강의동"
+                else -> ""
+            }
+            return if (detail.isNotBlank()) "$buildingName ($detail)" else buildingName
+        }
+}

@@ -60,14 +60,7 @@ object LectureRoomRepository {
         var lastBuildingName = ""
         sortedRooms.forEach { room ->
             if (room.buildingName != lastBuildingName) {
-                val detail = room.buildingDetail.takeIf { it.isNotBlank() } ?: when (room.buildingName) {
-                    "덕문관" -> "5강의동"
-                    "집현관" -> "7강의동"
-                    "예지관" -> "4강의동"
-                    else -> ""
-                }
-                
-                val headerText = if (detail.isNotBlank()) "${room.buildingName} ($detail)" else room.buildingName
+                val headerText = room.displayBuildingName
                 groupedList.add(ListItem.HeaderItem(headerText))
                 lastBuildingName = room.buildingName
             }

@@ -45,14 +45,14 @@ class FavoriteFragment : Fragment() {
                         roomName = room.name,
                         buildingName = room.buildingName,
                         buildingDetail = room.buildingDetail,
-                        building = " ()"
+                        building = room.displayBuildingName
                     )
                 )
             },
             onReserveClick = { room ->
                 findNavController().navigate(
                     FavoriteFragmentDirections.actionNavigationFavoriteToManualReservationFragment(
-                        building = " ()",
+                        building = room.displayBuildingName,
                         roomName = room.name
                     )
                 )
