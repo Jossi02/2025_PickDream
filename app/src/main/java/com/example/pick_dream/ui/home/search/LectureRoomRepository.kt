@@ -45,11 +45,11 @@ object LectureRoomRepository {
             room.copy(isFavorite = ids.contains(room.id))
         }
 
-        // buildingDetail에서 숫자(강의동 번호)를 추출하여 건물별로 먼저 정렬하고, 그 다음 강의실 번호로 정렬
+        // displayBuildingName에서 숫자(강의동 번호)를 추출하여 건물별로 먼저 정렬하고, 그 다음 강의실 번호로 정렬
         val sortedRooms = updatedRooms.sortedWith(
             compareBy<LectureRoom> { room ->
-                // "5강의동" -> 5
-                room.buildingDetail.filter { it.isDigit() }.toIntOrNull() ?: 999
+                // "덕문관 (5강의동)" -> 5
+                room.displayBuildingName.filter { it.isDigit() }.toIntOrNull() ?: 999
             }.thenBy {
                 // "5104" -> 5104
                 it.name.filter { char -> char.isDigit() }.toIntOrNull() ?: 0
