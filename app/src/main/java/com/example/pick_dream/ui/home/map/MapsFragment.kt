@@ -71,7 +71,7 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
             imageResList = listOf(R.drawable.sample_room),
             rating = 0.0f,
             availableRooms = 0,
-            latLng = LatLng(37.3005, 127.0378)
+            latLng = LatLng(37.3008, 127.0360)
         )
     )
 
