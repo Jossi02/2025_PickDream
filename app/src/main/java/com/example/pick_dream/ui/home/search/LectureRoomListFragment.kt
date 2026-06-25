@@ -33,9 +33,14 @@ class LectureRoomListFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         setupRecyclerView()
-        observeLectureRooms()
         setupSearch()
         setupFilterButtons()
+        observeLectureRooms()
+
+        val initialQuery = arguments?.getString("initialSearchQuery")
+        if (!initialQuery.isNullOrBlank()) {
+            binding.etSearch.setText(initialQuery)
+        }
 
         binding.btnBack.setOnClickListener {
             findNavController().popBackStack()

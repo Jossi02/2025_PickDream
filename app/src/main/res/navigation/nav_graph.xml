@@ -67,6 +67,9 @@
         <action
             android:id="@+id/action_mapsFragment_to_lectureRoomSelectionFragment"
             app:destination="@id/lectureRoomSelectionFragment" />
+        <action
+            android:id="@+id/action_mapsFragment_to_lectureRoomListFragment"
+            app:destination="@id/lectureRoomListFragment" />
     </fragment>
 
     <fragment
@@ -140,6 +143,11 @@
         android:name="com.example.pick_dream.ui.home.search.LectureRoomListFragment"
         android:label="대여 강의실 조회"
         tools:layout="@layout/fragment_lecture_room_list">
+        <argument
+            android:name="initialSearchQuery"
+            app:argType="string"
+            app:nullable="true"
+            android:defaultValue="@null" />
         <action
             android:id="@+id/action_lectureRoomListFragment_to_lectureRoomDetailFragment"
             app:destination="@id/lectureRoomDetailFragment" />

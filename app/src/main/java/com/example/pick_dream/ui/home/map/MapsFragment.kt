@@ -191,13 +191,11 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
                 .show(childFragmentManager, "img_preview")
         }
         binding.btnReserve.setOnClickListener {
-            val buildingDetail = place.name.substringAfter("(").substringBefore(")")
             val buildingName = place.name.substringBefore(" (")
             
             val action = MapsFragmentDirections
-                .actionMapsFragmentToLectureRoomSelectionFragment(
-                    buildingName = buildingName,
-                    buildingDetail = buildingDetail
+                .actionMapsFragmentToLectureRoomListFragment(
+                    initialSearchQuery = buildingName
                 )
             findNavController().navigate(action)
         }
