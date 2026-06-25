@@ -64,6 +64,14 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
             rating = 3.8f,
             availableRooms = 2,
             latLng = LatLng(37.300731, 127.039265)
+        ),
+        Place(
+            name = "예지관 (4강의동)",
+            description = "예약 가능 강의실 : N개",
+            imageResList = listOf(R.drawable.sample_room),
+            rating = 0.0f,
+            availableRooms = 0,
+            latLng = LatLng(37.3005, 127.0378)
         )
     )
 
