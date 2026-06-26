@@ -18,7 +18,8 @@ initialize_app()
 
 db = firestore.client()
 # Vertex AI 모드를 사용하도록 클라이언트 설정 (인증 오류 방지)
-genai_client = genai.Client(vertexai=True, project="pickdreamtest", location="us-central1")
+project_id = os.environ.get("GCLOUD_PROJECT", "pickdreamtest")
+genai_client = genai.Client(vertexai=True, project=project_id, location="us-central1")
 
 KST = timezone(timedelta(hours=9))
 
@@ -163,7 +164,7 @@ def handle_reserve(query, userID):
             query["duration"] = int(query["duration"])
             start = datetime.fromisoformat(query["startTime"])
             if start.tzinfo is None:
-                start = start.replace(tzinfo=timezone.utc).astimezone(KST)
+                start = start.replace(tzinfo=KST)
         except Exception as e:
             logging.exception(f"[handle_reserve] 시간 파싱 실패: {query.get('startTime')}")
             return https_fn.Response("시작 시간이 올바른 형식이 아니에요.", status=400)
@@ -293,7 +294,7 @@ def handle_change_reservation(query, userID):
             try:
                 start = datetime.fromisoformat(new_start_time)
                 if start.tzinfo is None:
-                    start = start.replace(tzinfo=timezone.utc).astimezone(KST)
+                    start = start.replace(tzinfo=KST)
             except:
                 pass
 
@@ -388,7 +389,7 @@ def handle_review_summary(query, userID):
 
 def handle_recommend_room(query, userID):
     keywords = query.get("keywords", [])
-    now = datetime.utcnow() + timedelta(hours=9)
+    now = datetime.now(KST)
 
     # 🔍 인원 조건 추출
     person_count = next(
@@ -632,7 +633,8 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
         now_kst = datetime.now(KST)
         system_prompt = f"""너는 Firestore 기반 강의실 예약 도우미야. 사용자의 한국어 문장을 먼저 자연스럽게 오타 없이 교정하고, 그 다음 아래 JSON 명령 중 하나로 변환해.
 
-오늘 날짜는 {now_kst.strftime('%Y-%m-%d')}이야. 이 정보를 바탕으로 '내일', '모레' 같은 상대적인 날짜를 정확한 ISO 8601 형식의 시간으로 변환해줘.
+오늘 날짜와 현재 시간은 {now_kst.strftime('%Y-%m-%d %H:%M:%S KST')}이야. 이 정보를 바탕으로 '내일', '모레', '오후 2시' 같은 상대적인 시간 데이터를 정확한 ISO 8601 형식으로 변환해줘.
+주의: 모든 시간 데이터는 반드시 KST(한국시간) 기준의 ISO-8601 형식(YYYY-MM-DDTHH:MM:SS+09:00)으로 작성해야 해. (예: 2025-03-15T14:00:00+09:00)
 
 반드시 아래 형식을 따르고, **JSON만 반환**해야 해.
 설명, 문장, 주석 등은 출력하지 마. 오직 JSON 한 개만 반환해.
