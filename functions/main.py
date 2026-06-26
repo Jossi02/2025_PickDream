@@ -189,14 +189,20 @@ def handle_reserve(query, userID):
         
         # 'eventParticipants' 키의 값을 가져옵니다.
         event_participants_value = query.get("eventParticipants")
+        
+        # 값이 없으면 keywords에서 추출 시도
+        if not event_participants_value and query.get("keywords"):
+            person_count = next(
+                (int(k.replace("명", "")) for k in query.get("keywords", []) if isinstance(k, str) and k.endswith("명") and k[:-1].isdigit()), 
+                None
+            )
+            if person_count:
+                event_participants_value = str(person_count)
 
         # 값이 문자열인 경우, 공백을 제거합니다.
         if isinstance(event_participants_value, str):
             query["eventParticipants"] = event_participants_value.strip()
-        # 값이 None이거나 다른 타입인 경우, 안전하게 문자열로 변환하고 빈 문자열로 처리할 수 있습니다.
-        # LLM이 인원수를 숫자로 반환할 수도 있으므로, 이를 고려합니다.
         else:
-            # 값이 None이면 빈 문자열로, 아니면 문자열로 변환합니다.
             query["eventParticipants"] = str(event_participants_value or "").strip()
             
         query["status"] = "대기"
@@ -925,18 +931,24 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
         if action == "recommend_room":
             response = handle_recommend_room(query, userID)
             pending = db.collection("PendingReservations").document(userID).get()
-            if pending.exists and any(kw in user_input for kw in ["예약까지", "예약해줘", "바로 예약", "바로해줘"]):
-                pending_data = pending.to_dict()
-                reserve_query = {
-                    "action": "reserve",
-                    "userID": userID,
-                    "room": pending_data.get("room"),
-                    "startTime": pending_data.get("startTime"),
-                    "duration": pending_data.get("duration"),
-                    "eventName": pending_data.get("eventName", "추천 예약"),
-                    "eventParticipants": pending_data.get("eventParticipants")
-                }
-                return handle_reserve(reserve_query, userID)
+            if pending.exists:
+                pending_data = pending.to_dict() or {}
+                has_all_fields = pending_data.get("room") and pending_data.get("startTime") and pending_data.get("eventParticipants")
+                
+                is_simple_answer = len(user_input.strip().split()) <= 2 and query.get("keywords")
+                is_reserve_intent = any(kw in user_input for kw in ["예약까지", "예약해줘", "바로 예약", "바로해줘", "예약할게", "할게", "사용할게"])
+                
+                if has_all_fields and (is_simple_answer or is_reserve_intent):
+                    reserve_query = {
+                        "action": "reserve",
+                        "userID": userID,
+                        "room": pending_data.get("room"),
+                        "startTime": pending_data.get("startTime"),
+                        "duration": pending_data.get("duration", 2),
+                        "eventName": pending_data.get("eventName", "추천 예약"),
+                        "eventParticipants": pending_data.get("eventParticipants")
+                    }
+                    return handle_reserve(reserve_query, userID)
             return response
 
         return handlers[action](query, userID)
