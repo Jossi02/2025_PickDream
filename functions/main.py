@@ -185,7 +185,7 @@ def handle_reserve(query, userID):
         required_fields = ["room", "startTime", "duration", "userID", "eventParticipants"]
         missing = [f for f in required_fields if not query.get(f) or str(query.get(f)).strip() == ""]
         if missing:
-            db.collection("PendingReservations").document(userID).set(query)
+            db.collection("PendingReservations").document(userID).set(query, merge=True)
             friendly_names = {
                 "room": "강의실",
                 "startTime": "시작 시간",
@@ -547,7 +547,7 @@ def handle_recommend_room(query, userID):
     if person_count is not None:
         pending_data["eventParticipants"] = f"{person_count}명"
 
-    db.collection("PendingReservations").document(userID).set(pending_data)
+    db.collection("PendingReservations").document(userID).set(pending_data, merge=True)
 
     return https_fn.Response(response, status=200)
 
@@ -689,6 +689,7 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
 
 오늘 날짜와 현재 시간은 {now_kst.strftime('%Y-%m-%d %H:%M:%S KST')}이야. 이 정보를 바탕으로 '내일', '모레', '오후 2시' 같은 상대적인 시간 데이터를 정확한 ISO 8601 형식으로 변환해줘.
 주의: 모든 시간 데이터는 반드시 KST(한국시간) 기준의 ISO-8601 형식(YYYY-MM-DDTHH:MM:SS+09:00)으로 작성해야 해. (예: 2025-03-15T14:00:00+09:00)
+💡 매우 중요한 규칙: 사용자가 말한 시간이 현재 시간보다 과거라면, 특별한 날짜 언급이 없더라도 무조건 "내일"의 시간으로 간주하고 내일 날짜로 변환하세요.
 
 반드시 아래 형식을 따르고, **JSON만 반환**해야 해.
 설명, 문장, 주석 등은 출력하지 마. 오직 JSON 한 개만 반환해.
