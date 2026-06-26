@@ -25,7 +25,17 @@ KST = timezone(timedelta(hours=9))
 
 # 방 번호 추출 함수
 def extract_room_id(text):
-    m = re.search(r'(\d)\s*(?:강의동|동)?\s*[-\s]?\s*(\d{2,3})\s*호?', text)
+    if not text: return None
+    building_map = {
+        "덕문관": "5",
+        "집현관": "7",
+        "예지관": "4"
+    }
+    for name, num in building_map.items():
+        if name in text:
+            text = text.replace(name, f"{num}강의동")
+
+    m = re.search(r'(\d)\s*(?:강의동|동|관)?\s*[-\s]?\s*(\d{2,3})\s*호?', text)
     if m:
         return m.group(1) + m.group(2)
     m2 = re.search(r'(\d{3,4})\s*호?', text)
