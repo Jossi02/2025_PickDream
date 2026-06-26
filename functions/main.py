@@ -162,7 +162,16 @@ def handle_reserve(query, userID):
         if not room_id:
             return https_fn.Response("해당 강의실 정보를 확인할 수 없어요.", status=400)
             
-        query["room"] = room_id
+        room_name = room_data.get("name", "") if room_data else ""
+        extracted = extract_room_id(room_name)
+        if room_data and room_data.get("roomID"):
+            query["room"] = str(room_data.get("roomID"))
+        elif room_data and room_data.get("roomId"):
+            query["room"] = str(room_data.get("roomId"))
+        elif extracted:
+            query["room"] = extracted
+        else:
+            query["room"] = room_id
 
         query["eventName"] = "추천 예약"
         query["eventDescription"] = ""
