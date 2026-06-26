@@ -9,29 +9,7 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "endTimestamp",
-          "order": "ASCENDING"
-        },
-        {
           "fieldPath": "startTimestamp",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "Reservations",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "roomID",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "startTimestamp",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "endTimestamp",
           "order": "ASCENDING"
         }
       ]
@@ -46,28 +24,6 @@
         },
         {
           "fieldPath": "startTimestamp",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "endTimestamp",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "Reservations",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "userID",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "startTimestamp",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "endTimestamp",
           "order": "ASCENDING"
         }
       ]
