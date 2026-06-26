@@ -45,11 +45,11 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "endTimestamp",
+          "fieldPath": "startTimestamp",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "startTimestamp",
+          "fieldPath": "endTimestamp",
           "order": "ASCENDING"
         }
       ]
