@@ -240,7 +240,10 @@ def handle_reserve(query, userID):
 
     except Exception as e:
         logging.exception("[handle_reserve] 최상위 예외 발생")
-        return https_fn.Response("예약 처리 중 알 수 없는 오류가 발생했어요. 로그를 확인해 주세요.", status=500)
+        import traceback
+        tb = traceback.format_exc()
+        # 사용자가 화면에서 직접 에러 원인을 볼 수 있도록 에러 메시지를 응답에 포함
+        return https_fn.Response(f"예약 처리 중 오류 발생:\n{str(e)}\n\n(자세한 에러 원인을 캡처해서 보여주세요)", status=500)
 
 
 
