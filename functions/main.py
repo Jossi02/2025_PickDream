@@ -433,6 +433,15 @@ def handle_recommend_room(query, userID):
         (int(k.replace("명", "")) for k in keywords if k.endswith("명") and k[:-1].isdigit()), 
         None
     )
+    if person_count is None and query.get("eventParticipants"):
+        try:
+            import re
+            num = re.search(r'\d+', str(query.get("eventParticipants")))
+            if num:
+                person_count = int(num.group())
+        except:
+            pass
+
 
     # 🔍 시간 기준: "지금" 또는 명시적 예약 시작 시간
     require_available_now = "지금" in keywords
@@ -904,7 +913,8 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
                     "room": pending_data.get("room"),
                     "startTime": pending_data.get("startTime"),
                     "duration": pending_data.get("duration"),
-                    "eventName": pending_data.get("eventName", "추천 예약")
+                    "eventName": pending_data.get("eventName", "추천 예약"),
+                    "eventParticipants": pending_data.get("eventParticipants")
                 }
                 return handle_reserve(reserve_query, userID)
             return response
