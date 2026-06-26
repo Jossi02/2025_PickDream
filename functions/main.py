@@ -73,14 +73,26 @@ def find_room(room_identifier):
 
 
 def has_conflict(field: str, value: str, start, end, exclude_id: str = None):
+    # Firestore는 하나의 쿼리에서 여러 필드에 대한 부등호(<, >) 조회를 허용하지 않습니다.
+    # 따라서 startTimestamp로 범위를 좁히고, endTimestamp는 메모리에서 필터링해야 합니다.
     conflicts = db.collection("Reservations") \
-        .where("startTimestamp", "<", end) \
-        .where("endTimestamp", ">", start) \
-        .where(field, "==", value).stream()
+        .where(field, "==", value) \
+        .where("startTimestamp", "<", end).stream()
+        
     logging.info(f"[has_conflict] field={field}, value={value}, exclude_id={exclude_id}")
-    if exclude_id:
-        return any(True for doc in conflicts if doc.id != exclude_id)
-    return any(True for _ in conflicts)
+    
+    for doc in conflicts:
+        if exclude_id and doc.id == exclude_id:
+            continue
+            
+        data = doc.to_dict()
+        c_end = data.get("endTimestamp")
+        
+        # 예약의 종료 시간이 새로운 예약의 시작 시간보다 큰 경우 충돌!
+        if c_end and c_end > start:
+            return True
+            
+    return False
 
 def handle_query_equipment(query, userID):
     room_id, room_data = find_room(query.get("room"))
