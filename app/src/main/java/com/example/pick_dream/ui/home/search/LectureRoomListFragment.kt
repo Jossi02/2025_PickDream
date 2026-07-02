@@ -107,7 +107,7 @@ class LectureRoomListFragment : Fragment() {
         val filteredList = if (query.isNullOrEmpty()) {
             allItems
         } else {
-            val lowerCaseQuery = query.lowercase()
+            val normalizedQuery = query.toSearchKey()
             val filteredItems = mutableListOf<ListItem>()
             var currentHeader: ListItem.HeaderItem? = null
             val roomsUnderCurrentHeader = mutableListOf<ListItem.RoomItem>()
@@ -124,9 +124,7 @@ class LectureRoomListFragment : Fragment() {
                     }
                     is ListItem.RoomItem -> {
                         val room = item.lectureRoom
-                        if (room.name.lowercase().contains(lowerCaseQuery) ||
-                            room.buildingName.lowercase().contains(lowerCaseQuery) ||
-                            room.equipment.any { eq -> eq.lowercase().contains(lowerCaseQuery) }) {
+                        if (room.matchesSearch(normalizedQuery, currentHeader?.buildingName)) {
                             roomsUnderCurrentHeader.add(item)
                         }
                     }
@@ -139,6 +137,82 @@ class LectureRoomListFragment : Fragment() {
             filteredItems
         }
         adapter.submitList(filteredList)
+    }
+
+    private fun LectureRoom.matchesSearch(normalizedQuery: String, headerName: String?): Boolean {
+        if (normalizedQuery.isBlank()) return true
+
+        return if (normalizedQuery.all { it.isDigit() }) {
+            matchesNumericSearch(normalizedQuery)
+        } else {
+            searchableTextTerms(headerName).any { term ->
+                term.toSearchKey().contains(normalizedQuery)
+            }
+        }
+    }
+
+    private fun LectureRoom.matchesNumericSearch(normalizedQuery: String): Boolean {
+        val roomDigits = name.filter { it.isDigit() }
+        val buildingNumber = buildingNumber()
+        val generatedRoomAlias = if (buildingNumber.isNotBlank() && roomDigits.isNotBlank()) {
+            buildingNumber + roomDigits
+        } else {
+            ""
+        }
+        val numericDocumentId = id.takeIf { it.isNotBlank() && it.all { char -> char.isDigit() } }.orEmpty()
+
+        if (normalizedQuery.length == 1) {
+            return buildingNumber == normalizedQuery || generatedRoomAlias.startsWith(normalizedQuery)
+        }
+
+        return listOf(roomDigits, generatedRoomAlias, numericDocumentId)
+            .filter { it.isNotBlank() }
+            .any { it.contains(normalizedQuery) }
+    }
+
+    private fun LectureRoom.searchableTextTerms(headerName: String?): List<String> {
+        val roomDigits = name.filter { it.isDigit() }
+        val buildingNumber = buildingNumber()
+        val generatedRoomAlias = if (buildingNumber.isNotBlank() && roomDigits.isNotBlank()) {
+            buildingNumber + roomDigits
+        } else {
+            ""
+        }
+        val numericDocumentId = id.takeIf { it.isNotBlank() && it.all { char -> char.isDigit() } }.orEmpty()
+
+        return buildList {
+            add(numericDocumentId)
+            add(name)
+            add(roomDigits)
+            add(generatedRoomAlias)
+            add("${generatedRoomAlias}호")
+            add("${generatedRoomAlias}강의실")
+            add(buildingName)
+            add(buildingDetail)
+            add(displayBuildingName)
+            add(headerName.orEmpty())
+            addAll(equipment)
+        }.filter { it.isNotBlank() }
+    }
+
+    private fun LectureRoom.buildingNumber(): String {
+        val sources = listOf(buildingDetail, displayBuildingName)
+        for (source in sources) {
+            val match = Regex("""(\d+)\s*강의동""").find(source)
+            if (match != null) return match.groupValues[1]
+        }
+
+        return when (buildingName) {
+            "예지관" -> "4"
+            "덕문관" -> "5"
+            "집현관" -> "7"
+            else -> ""
+        }
+    }
+
+    private fun String.toSearchKey(): String {
+        return lowercase()
+            .replace("\\s+".toRegex(), "")
     }
     
     private fun hideKeyboard(view: View) {
