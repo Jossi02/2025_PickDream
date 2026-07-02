@@ -1,8 +1,9 @@
 package com.example.pick_dream.ui.home.reservation
 
+import com.example.pick_dream.model.LectureRoom
 import com.example.pick_dream.model.Reservation
+import com.example.pick_dream.util.RoomIdUtils
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.firestore.ktx.toObject
 import com.google.firebase.ktx.Firebase
@@ -35,13 +36,7 @@ object ReservationRepository {
      */
     suspend fun getReservationsByRoom(roomId: String): List<Reservation> {
         return try {
-            val roomIds = buildList {
-                val normalized = roomId.trim()
-                if (normalized.isNotBlank()) add(normalized)
-                if (normalized.length == 4 && normalized.all { it.isDigit() }) {
-                    add(normalized.drop(1)) // Legacy manual reservations stored 202 instead of 7202.
-                }
-            }.distinct()
+            val roomIds = RoomIdUtils.aliasesForReservationQuery(roomId)
 
             val reservationsByDocumentId = linkedMapOf<String, Reservation>()
             roomIds.forEach { id ->
@@ -72,14 +67,18 @@ object ReservationRepository {
 
         val map = mutableMapOf<String, String?>()
         try {
-            // Note: Firestore의 in 쿼리는 최대 10개까지 가능하므로, 
-            // 예약 수가 많을 경우 청크로 나누거나 개별 조회가 필요할 수 있음.
-            // 기존 로직은 개별 조회를 Tasks.whenAllSuccess 로 처리했음. 코루틴으로 개별 조회 진행
-            uniqueIds.forEach { roomId ->
-                val doc = db.collection("rooms").document(roomId).get().await()
-                if (doc.exists()) {
-                    map[roomId] = doc.getString("image")
+            val roomDocuments = db.collection("rooms").get().await().documents
+            val roomDocumentPairs = roomDocuments.mapNotNull { doc ->
+                doc.toObject<LectureRoom>()?.copy(id = doc.id)?.let { room ->
+                    room to doc
                 }
+            }
+
+            uniqueIds.forEach { roomId ->
+                val doc = roomDocumentPairs.firstOrNull { (room, _) ->
+                    RoomIdUtils.matchesReservationRoomId(room, roomId)
+                }?.second
+                map[roomId] = doc?.getString("image") ?: doc?.getString("imageUrl")
             }
         } catch (e: Exception) {
             // 실패 시 빈 맵 반환 (기본 이미지 처리를 위해)
@@ -93,8 +92,11 @@ object ReservationRepository {
     suspend fun addReservation(reservation: Reservation): Boolean {
         return try {
             val ownerUid = FirebaseAuth.getInstance().currentUser?.uid ?: return false
+            val normalizedRoomId = RoomIdUtils.aliasesForReservationQuery(reservation.roomID)
+                .firstOrNull()
+                ?: reservation.roomID.trim()
             db.collection("Reservations")
-                .add(reservation.copy(ownerUid = ownerUid))
+                .add(reservation.copy(ownerUid = ownerUid, roomID = normalizedRoomId))
                 .await()
             true
         } catch (e: Exception) {

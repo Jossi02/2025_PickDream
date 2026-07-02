@@ -14,6 +14,7 @@ import com.prolificinteractive.materialcalendarview.MaterialCalendarView
 import com.prolificinteractive.materialcalendarview.CalendarDay
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.activityViewModels
+import com.example.pick_dream.util.RoomIdUtils
 
 class ManualReservationFragment : Fragment() {
     private val reservationViewModel: ManualReservationViewModel by activityViewModels()
@@ -153,7 +154,11 @@ class ManualReservationFragment : Fragment() {
 
         val building = arguments?.getString("building") ?: ""
         val roomName = arguments?.getString("roomName") ?: ""
-        val roomId = resolveReservationRoomId(building, roomName)
+        val roomId = RoomIdUtils.canonicalRoomId(
+            buildingName = building.substringBefore("(").trim(),
+            buildingDetail = building,
+            roomName = roomName
+        )
         tvBuilding.text = building
         tvRoomName.text = roomName
         
@@ -557,23 +562,6 @@ class ManualReservationFragment : Fragment() {
             true
         }
         popup.show()
-    }
-
-
-    private fun resolveReservationRoomId(building: String, roomName: String): String {
-        Regex("""(?<!\d)\d{4}(?!\d)""").find(roomName)?.value?.let { return it }
-
-        val buildingNumber = Regex("""(?<!\d)\d(?!\d)""").find(building)?.value
-        val roomNumber = Regex("""(?<!\d)\d{2,3}(?!\d)""")
-            .findAll(roomName)
-            .lastOrNull()
-            ?.value
-
-        if (!buildingNumber.isNullOrBlank() && !roomNumber.isNullOrBlank()) {
-            return buildingNumber + roomNumber
-        }
-
-        return Regex("""\d+""").find(roomName)?.value ?: ""
     }
 
     override fun onResume() {

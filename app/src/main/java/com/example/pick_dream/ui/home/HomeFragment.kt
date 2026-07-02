@@ -14,11 +14,13 @@ import com.example.pick_dream.databinding.FragmentHomeBinding
 import com.example.pick_dream.model.Reservation
 import com.example.pick_dream.notification.PickDreamNotificationManager
 import com.google.android.material.bottomnavigation.BottomNavigationView
-import com.google.firebase.firestore.FirebaseFirestore
 import com.squareup.picasso.Picasso
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import com.example.pick_dream.ui.home.notice.NoticeRepository
+import com.example.pick_dream.ui.home.reservation.ReservationRepository
+import com.example.pick_dream.ui.home.search.LectureRoomRepository
+import com.example.pick_dream.util.RoomIdUtils
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -140,24 +142,24 @@ class HomeFragment : Fragment() {
         binding.layoutReservationDetails.visibility = View.VISIBLE
         binding.flReservationStatusVisual.visibility = View.VISIBLE
 
-        val roomIdOnly = reservation.roomID.replace(Regex("[^0-9]"), "")
-        FirebaseFirestore.getInstance().collection("rooms").document(roomIdOnly).get()
-            .addOnSuccessListener { roomDoc ->
-                if (_binding == null || !isAdded) return@addOnSuccessListener
-                if (roomDoc.exists()) {
-                    val roomName = roomDoc.getString("name") ?: roomIdOnly
-                    binding.tvReservationRoom.text = "대여 장소 : $roomName"
-                    val imageUrl = roomDoc.getString("image")
-                    if (!imageUrl.isNullOrEmpty()) {
-                        Picasso.get().load(imageUrl).into(binding.ivRoomBackground)
-                    } else {
-                        binding.ivRoomBackground.setImageResource(R.drawable.sample_room)
-                    }
-                } else {
-                    binding.tvReservationRoom.text = "대여 장소 : $roomIdOnly"
-                    binding.ivRoomBackground.setImageResource(R.drawable.sample_room)
-                }
+        val canonicalRoomId = RoomIdUtils.aliasesForReservationQuery(reservation.roomID)
+            .firstOrNull()
+            ?: reservation.roomID.trim()
+
+        LectureRoomRepository.fetchRoomByCanonicalId(canonicalRoomId) { room ->
+            if (_binding == null || !isAdded) return@fetchRoomByCanonicalId
+            binding.tvReservationRoom.text = "대여 장소 : ${room?.name ?: "$canonicalRoomId 강의실"}"
+        }
+
+        lifecycleScope.launch {
+            val imageUrl = ReservationRepository.getRoomImages(listOf(canonicalRoomId))[canonicalRoomId]
+            if (_binding == null || !isAdded) return@launch
+            if (!imageUrl.isNullOrEmpty()) {
+                Picasso.get().load(imageUrl).into(binding.ivRoomBackground)
+            } else {
+                binding.ivRoomBackground.setImageResource(R.drawable.sample_room)
             }
+        }
 
         val startCal = reservation.startTime?.let { parseKoreanDateToCalendar(it) }
         val endCal = reservation.endTime?.let { parseKoreanDateToCalendar(it) }

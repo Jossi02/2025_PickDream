@@ -10,6 +10,7 @@ import com.google.firebase.ktx.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.example.pick_dream.model.LectureRoom
+import com.example.pick_dream.util.RoomIdUtils
 import com.google.firebase.firestore.FieldValue
 
 sealed class ListItem {
@@ -154,6 +155,32 @@ object LectureRoomRepository {
             }
             .addOnFailureListener {
                 Log.e("LectureRoomRepo", "Error fetching room by name: $roomName", it)
+                onResult(null)
+            }
+    }
+
+    fun fetchRoomByCanonicalId(roomId: String, onResult: (LectureRoom?) -> Unit) {
+        val canonicalRoomId = RoomIdUtils.aliasesForReservationQuery(roomId).firstOrNull() ?: roomId.trim()
+        val cachedRoom = allRooms.value?.firstOrNull { room ->
+            RoomIdUtils.matchesReservationRoomId(room, canonicalRoomId)
+        }
+        if (cachedRoom != null) {
+            onResult(cachedRoom)
+            return
+        }
+
+        db.collection("rooms")
+            .get()
+            .addOnSuccessListener { documents ->
+                val room = documents.mapNotNull { doc ->
+                    doc.toObject<LectureRoom>().copy(id = doc.id)
+                }.firstOrNull { room ->
+                    RoomIdUtils.matchesReservationRoomId(room, canonicalRoomId)
+                }
+                onResult(room)
+            }
+            .addOnFailureListener {
+                Log.e("LectureRoomRepo", "Error fetching room by canonical id: $canonicalRoomId", it)
                 onResult(null)
             }
     }
