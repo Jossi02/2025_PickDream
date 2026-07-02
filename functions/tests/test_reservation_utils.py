@@ -15,6 +15,8 @@ from reservation_utils import (  # noqa: E402
     parse_korean_time,
     parse_natural_korean_datetime,
     reservation_room_id,
+    room_id_aliases,
+    same_room_id,
 )
 
 
@@ -29,6 +31,20 @@ class ReservationUtilsTest(unittest.TestCase):
     def test_reservation_room_id_prefers_explicit_schema_field(self):
         self.assertEqual("4103", reservation_room_id("hash", {"roomID": 4103, "name": "예지관 101호"}))
         self.assertEqual("4101", reservation_room_id("hash", {"name": "예지관 101호"}))
+
+    def test_reservation_room_id_canonicalizes_legacy_room_number(self):
+        self.assertEqual(
+            "7202",
+            reservation_room_id(
+                "202",
+                {"roomID": "202", "name": "집현관 202호", "buildingName": "집현관", "buildingDetail": "7강의동"},
+            ),
+        )
+
+    def test_room_id_aliases_match_legacy_reservations(self):
+        self.assertEqual(["7202", "202"], room_id_aliases("7202"))
+        self.assertTrue(same_room_id("7202", "202"))
+        self.assertFalse(same_room_id("5101", "7202"))
 
     def test_capacity_is_normalized(self):
         self.assertEqual(12, coerce_capacity("12명"))

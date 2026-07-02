@@ -17,6 +17,8 @@ from reservation_utils import (
     parse_korean_time,
     parse_natural_korean_datetime,
     reservation_room_id,
+    room_id_aliases,
+    same_room_id,
 )
 
 # 환경 설정
@@ -310,10 +312,24 @@ def find_room(room_identifier):
     return None, None
 
 
+def _reservation_documents_for_field(field: str, value: str):
+    if field != "roomID":
+        yield from db.collection("Reservations").where(field, "==", value).stream()
+        return
+
+    seen = set()
+    for alias in room_id_aliases(value):
+        for doc in db.collection("Reservations").where("roomID", "==", alias).stream():
+            if doc.id in seen:
+                continue
+            seen.add(doc.id)
+            yield doc
+
+
 def has_conflict(field: str, value: str, start, end, exclude_id: str = None):
     # 인덱스 문제와 안드로이드 앱의 Extra Fields 크래시 문제를 해결하기 위해,
     # startTimestamp/endTimestamp 필드 대신 문자열 startTime/endTime을 파싱하여 메모리에서 모두 비교합니다.
-    conflicts = db.collection("Reservations").where(field, "==", value).stream()
+    conflicts = _reservation_documents_for_field(field, value)
         
     logging.info(f"[has_conflict] field={field}, value={value}, exclude_id={exclude_id}")
     
@@ -349,7 +365,7 @@ def has_conflict(field: str, value: str, start, end, exclude_id: str = None):
 
 
 def find_conflicting_reservation(field: str, value: str, start, end, exclude_id: str = None):
-    conflicts = db.collection("Reservations").where(field, "==", value).stream()
+    conflicts = _reservation_documents_for_field(field, value)
     for doc in conflicts:
         if exclude_id and doc.id == exclude_id:
             continue
@@ -371,12 +387,16 @@ def find_conflicting_reservation(field: str, value: str, start, end, exclude_id:
 
 
 def find_available_rooms(start, end, person_count=0, exclude_room_ids=None):
-    exclude_room_ids = {str(room_id) for room_id in (exclude_room_ids or []) if room_id}
+    exclude_room_ids = {
+        alias
+        for room_id in (exclude_room_ids or [])
+        for alias in room_id_aliases(room_id)
+    }
     matched = []
     for doc in db.collection("rooms").stream():
         r_data = doc.to_dict()
         canonical_room_id = reservation_room_id(doc.id, r_data)
-        if canonical_room_id in exclude_room_ids:
+        if any(alias in exclude_room_ids for alias in room_id_aliases(canonical_room_id)):
             continue
 
         cap = coerce_capacity(r_data.get("capacity"))
@@ -409,7 +429,7 @@ def find_user_reservation(userID, room_id=None, target_start=None):
             continue
 
         doc_room_id = str(data.get("roomID") or data.get("room") or "").strip()
-        if room_id and doc_room_id != str(room_id):
+        if room_id and not same_room_id(doc_room_id, room_id):
             continue
 
         start, end = reservation_time_range(data)
@@ -571,16 +591,7 @@ def handle_reserve(query, userID):
         if allow_alternative_room and not room_id:
             query["room"] = ""
         else:
-            room_name = room_data.get("name", "") if room_data else ""
-            extracted = extract_room_id(room_name)
-            if room_data and room_data.get("roomID"):
-                query["room"] = str(room_data.get("roomID"))
-            elif room_data and room_data.get("roomId"):
-                query["room"] = str(room_data.get("roomId"))
-            elif extracted:
-                query["room"] = extracted
-            else:
-                query["room"] = room_id
+            query["room"] = reservation_room_id(room_id, room_data) if room_data else room_id
 
         query["eventName"] = query.get("eventName") or "추천 예약"
         query["eventDescription"] = query.get("eventDescription") or ""

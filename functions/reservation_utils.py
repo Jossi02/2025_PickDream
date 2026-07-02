@@ -1,6 +1,6 @@
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, Mapping, Optional
+from typing import Any, List, Mapping, Optional
 
 
 KST = timezone(timedelta(hours=9))
@@ -35,12 +35,73 @@ def extract_room_id(text: Any) -> Optional[str]:
     return match.group(1) if match else None
 
 
+def _building_number(room_data: Mapping[str, Any]) -> Optional[str]:
+    candidates = [
+        room_data.get("buildingDetail"),
+        room_data.get("displayBuildingName"),
+        room_data.get("buildingName"),
+        room_data.get("location"),
+    ]
+    for value in candidates:
+        if not value:
+            continue
+        text = str(value)
+        for name, number in _BUILDING_MAP.items():
+            if name in text:
+                return number
+        match = re.search(r"(\d+)\s*강의동", text)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _canonicalize_room_id(room_id: Any, room_data: Mapping[str, Any]) -> Optional[str]:
+    extracted = extract_room_id(room_id)
+    if not extracted:
+        return None
+    if len(extracted) == 4:
+        return extracted
+    if len(extracted) == 3:
+        building_number = _building_number(room_data)
+        if building_number:
+            return f"{building_number}{extracted}"
+    return extracted
+
+
 def reservation_room_id(document_id: str, room_data: Mapping[str, Any]) -> str:
-    """Resolve a room document to the canonical ID stored in Reservations."""
-    explicit_id = room_data.get("roomID") or room_data.get("roomId")
-    if explicit_id is not None and str(explicit_id).strip():
-        return str(explicit_id).strip()
-    return extract_room_id(room_data.get("name")) or document_id
+    """Resolve a room document to the canonical four-digit ID used by Reservations."""
+    for value in (
+        room_data.get("roomID"),
+        room_data.get("roomId"),
+        room_data.get("name"),
+        document_id,
+    ):
+        canonical = _canonicalize_room_id(value, room_data)
+        if canonical:
+            return canonical
+    return str(document_id or "").strip()
+
+
+def room_id_aliases(room_id: Any) -> List[str]:
+    """Return reservation roomID values that may represent the same classroom.
+
+    New data should use the first value, a four-digit canonical ID such as 7202.
+    Legacy data may still contain only the room number, such as 202.
+    """
+    canonical = extract_room_id(room_id) or str(room_id or "").strip()
+    if not canonical:
+        return []
+
+    aliases = [canonical]
+    if len(canonical) == 4 and canonical.isdigit():
+        aliases.append(canonical[1:])
+    return list(dict.fromkeys(aliases))
+
+
+def same_room_id(left: Any, right: Any) -> bool:
+    left_aliases = set(room_id_aliases(left))
+    right_aliases = set(room_id_aliases(right))
+    return bool(left_aliases and right_aliases and left_aliases.intersection(right_aliases))
 
 
 def coerce_capacity(value: Any) -> int:
