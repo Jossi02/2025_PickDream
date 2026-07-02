@@ -531,13 +531,17 @@ def suggest_alternative_room_response(
     if replace_reservation_id:
         pending_data["replaceReservationId"] = replace_reservation_id
     db.collection("PendingReservations").document(userID).set(pending_data)
-    confirmation_action = "\ubcc0\uacbd" if replace_reservation_id else "\uc608\uc57d"
+    action_hint = (
+        "\uae30\uc874 \uc608\uc57d\uc744 \uc774 \uac15\uc758\uc2e4\ub85c \ubcc0\uacbd"
+        if replace_reservation_id
+        else "\uc774 \uac15\uc758\uc2e4\ub85c \uc608\uc57d"
+    )
     return https_fn.Response(
         f"{original_room_name}\uc740 \ud574\ub2f9 \uc2dc\uac04\uc5d0 \uc774\ubbf8 \uc608\uc57d\ub418\uc5b4 \uc788\uc5b4\uc694.\n\n"
         f"\ub300\uc2e0 {alt_room_name}\uc740 \uac19\uc740 \uc2dc\uac04\uc5d0 \uc608\uc57d \uac00\ub2a5\ud574\uc694.\n"
         f"\uc2dc\uac04: {format_korean_time(start)} ~ {format_korean_time(end)}\n"
         f"\uc778\uc6d0: {pending_data['eventParticipants']}\n\n"
-        f"\uc774 \uac15\uc758\uc2e4\ub85c {confirmation_action}\ud558\uc2dc\ub824\uba74 '\uc608\uc57d \ud655\uc815'\uc774\ub77c\uace0 \uc785\ub825\ud574 \uc8fc\uc138\uc694.",
+        f"{action_hint}\ud558\uc2dc\ub824\uba74 '\uc608\uc57d \ud655\uc815'\uc774\ub77c\uace0 \uc785\ub825\ud574 \uc8fc\uc138\uc694.",
         status=200,
     )
 
@@ -567,10 +571,29 @@ def handle_reserve(query, userID):
         pending = db.collection("PendingReservations").document(userID).get()
         if pending.exists:
             pending_data = pending.to_dict()
-            if allow_alternative_room and pending_data.get("blockedByReservationId") and not query.get("explicitChangeReservation"):
+            if allow_alternative_room and pending_data.get("blockedByReservationId"):
                 pending_room_id = pending_data.get("room")
                 _, pending_room_data = find_room(pending_room_id)
                 pending_room_name = display_room_label(pending_room_id, pending_room_data)
+                try:
+                    pending_start = datetime.fromisoformat(str(pending_data.get("startTime")))
+                    if pending_start.tzinfo is None:
+                        pending_start = pending_start.replace(tzinfo=KST)
+                    pending_duration = int(pending_data.get("duration") or query.get("duration") or 2)
+                    pending_end = pending_start + timedelta(hours=pending_duration)
+                    return suggest_alternative_room_response(
+                        pending_room_name,
+                        pending_start,
+                        pending_end,
+                        pending_duration,
+                        query.get("eventParticipants") or pending_data.get("eventParticipants"),
+                        owner_uid or pending_data.get("ownerUid", ""),
+                        userID,
+                        exclude_room_ids={pending_room_id},
+                        replace_reservation_id=pending_data.get("blockedByReservationId"),
+                    )
+                except Exception as e:
+                    logging.warning("[handle_reserve] pending alternative suggestion failed: %s", e)
                 return https_fn.Response(
                     f"이미 {pending_room_name}을(를) 해당 시간에 예약해두셨어요.\n\n"
                     "새 예약을 추가로 만들 수는 없어요. 다른 시간대를 선택해 주세요.\n"
@@ -773,7 +796,7 @@ def handle_reserve(query, userID):
             conflict_room_id = user_conflict_data.get("roomID") or user_conflict_data.get("room")
             _, conflict_room_data = find_room(conflict_room_id)
             conflict_room_name = display_room_label(conflict_room_id, conflict_room_data)
-            if allow_alternative_room and query.get("explicitChangeReservation"):
+            if allow_alternative_room:
                 return suggest_alternative_room_response(
                     conflict_room_name,
                     start,
@@ -784,13 +807,6 @@ def handle_reserve(query, userID):
                     userID,
                     exclude_room_ids={conflict_room_id},
                     replace_reservation_id=user_conflict_id,
-                )
-            if allow_alternative_room:
-                return https_fn.Response(
-                    f"이미 {conflict_room_name}을(를) 해당 시간에 예약해두셨어요.\n\n"
-                    "새 예약을 추가로 만들 수는 없어요. 다른 시간대를 선택해 주세요.\n"
-                    "기존 예약을 다른 강의실로 바꾸려면 '기존 예약을 다른 강의실로 변경해줘'라고 입력해 주세요.",
-                    status=409,
                 )
             db.collection("PendingReservations").document(userID).set(
                 {

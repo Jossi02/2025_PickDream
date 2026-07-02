@@ -171,7 +171,7 @@ class LlmAdapter(
                 "예약확정" !in normalized
 
         if (suggestsAlternative) {
-            actions.add(QuickAction(label = "다른 강의실 찾기", message = "다른 강의실로 해줘"))
+            actions.add(QuickAction(label = "다른 강의실 찾기", message = "기존 예약을 다른 강의실로 변경해줘"))
         }
 
         return actions
