@@ -6,10 +6,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.pick_dream.model.Review
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
+import com.example.pick_dream.repository.UserRepository
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 class ReviewViewModel : ViewModel() {
 
@@ -23,14 +21,11 @@ class ReviewViewModel : ViewModel() {
     val message: LiveData<String> get() = _message
 
     fun loadReviews() {
-        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
         _isLoading.value = true
 
         viewModelScope.launch {
             try {
-                // User 컬렉션에서 studentId 가져오기
-                val userDoc = FirebaseFirestore.getInstance().collection("User").document(uid).get().await()
-                val studentId = userDoc.getString("studentId")
+                val studentId = UserRepository.getCurrentStudentId()
 
                 if (studentId.isNullOrBlank()) {
                     _message.value = "학번 정보를 찾을 수 없습니다."

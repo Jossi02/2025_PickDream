@@ -16,11 +16,9 @@ import androidx.navigation.fragment.navArgs
 import com.example.pick_dream.R
 import com.example.pick_dream.databinding.FragmentReviewBinding
 import com.example.pick_dream.model.Review
+import com.example.pick_dream.repository.UserRepository
 import com.example.pick_dream.ui.mypage.review.ReviewRepository
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 class ReviewFragment : Fragment() {
 
@@ -86,20 +84,9 @@ class ReviewFragment : Fragment() {
     private fun submitReview() {
         binding.btnSubmit.isEnabled = false // 중복 제출 방지
 
-        val currentUser = FirebaseAuth.getInstance().currentUser
-        if (currentUser == null) {
-            Toast.makeText(context, "로그인이 필요합니다.", Toast.LENGTH_SHORT).show()
-            binding.btnSubmit.isEnabled = true
-            return
-        }
-
         lifecycleScope.launch {
             try {
-                // 학번은 User 컬렉션에서 조회
-                val userDoc = FirebaseFirestore.getInstance()
-                    .collection("User").document(currentUser.uid).get().await()
-
-                val studentId = userDoc.getString("studentId") ?: userDoc.getString("userID")
+                val studentId = UserRepository.getCurrentStudentId()
                 if (studentId.isNullOrBlank()) {
                     Toast.makeText(context, "사용자 정보를 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
                     binding.btnSubmit.isEnabled = true

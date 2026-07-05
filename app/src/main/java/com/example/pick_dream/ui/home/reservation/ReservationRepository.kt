@@ -2,8 +2,8 @@ package com.example.pick_dream.ui.home.reservation
 
 import com.example.pick_dream.model.LectureRoom
 import com.example.pick_dream.model.Reservation
+import com.example.pick_dream.repository.UserRepository
 import com.example.pick_dream.util.RoomIdUtils
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.firestore.ktx.toObject
 import com.google.firebase.ktx.Firebase
@@ -91,7 +91,7 @@ object ReservationRepository {
      */
     suspend fun addReservation(reservation: Reservation): Boolean {
         return try {
-            val ownerUid = FirebaseAuth.getInstance().currentUser?.uid ?: return false
+            val ownerUid = UserRepository.getCurrentUid() ?: return false
             val normalizedRoomId = RoomIdUtils.aliasesForReservationQuery(reservation.roomID)
                 .firstOrNull()
                 ?: reservation.roomID.trim()

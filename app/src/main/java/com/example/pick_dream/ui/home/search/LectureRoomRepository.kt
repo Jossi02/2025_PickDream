@@ -4,13 +4,13 @@ import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.MutableLiveData
+import com.example.pick_dream.model.LectureRoom
+import com.example.pick_dream.repository.UserRepository
+import com.example.pick_dream.util.RoomIdUtils
 import com.google.firebase.firestore.ktx.toObject
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.example.pick_dream.model.LectureRoom
-import com.example.pick_dream.util.RoomIdUtils
 import com.google.firebase.firestore.FieldValue
 
 sealed class ListItem {
@@ -20,7 +20,6 @@ sealed class ListItem {
 
 object LectureRoomRepository {
     private val db = FirebaseFirestore.getInstance()
-    private val auth = FirebaseAuth.getInstance()
     private val allRooms = MutableLiveData<List<LectureRoom>>()
     private val favoriteRoomIds = MutableLiveData<List<String>>()
 
@@ -93,7 +92,7 @@ object LectureRoomRepository {
     }
 
     fun fetchFavoriteIds() {
-        val uid = auth.currentUser?.uid ?: run {
+        val uid = UserRepository.getCurrentUid() ?: run {
             favoriteRoomIds.postValue(emptyList()) // 로그인하지 않은 사용자는 빈 찜 목록
             return
         }
@@ -119,7 +118,7 @@ object LectureRoomRepository {
     }
 
     fun toggleFavorite(roomId: String) {
-        val uid = auth.currentUser?.uid ?: return
+        val uid = UserRepository.getCurrentUid() ?: return
         val userDocRef = db.collection("User").document(uid)
 
         // isFavorite 값을 확인하여 서버에 추가 또는 삭제 요청

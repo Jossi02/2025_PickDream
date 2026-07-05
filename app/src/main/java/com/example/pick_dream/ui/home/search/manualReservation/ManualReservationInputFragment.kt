@@ -16,14 +16,11 @@ import androidx.navigation.fragment.findNavController
 import com.example.pick_dream.R
 import com.example.pick_dream.model.Reservation
 import com.example.pick_dream.notification.PickDreamNotificationManager
+import com.example.pick_dream.repository.UserRepository
 import com.google.android.material.button.MaterialButton
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 
 class ManualReservationInputFragment : Fragment() {
     private val reservationViewModel: ManualReservationViewModel by activityViewModels()
-    private val auth = FirebaseAuth.getInstance()
-    private val db = FirebaseFirestore.getInstance()
 
     private lateinit var btnReserve: MaterialButton
     private lateinit var etEventName: EditText
@@ -146,20 +143,10 @@ class ManualReservationInputFragment : Fragment() {
             return
         }
 
-        val currentUser = auth.currentUser
-        if (currentUser == null) {
-            Toast.makeText(context, "로그인이 필요합니다.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // 학번은 User 컬렉션에서 가져와야 함 (이 부분은 사용자 정보라 여기서 조회 유지, 
-        // 혹은 UserViewModel 도입 시 개선 가능하지만 일단 Firestore 직접 접근으로 유지하거나 개선)
-        db.collection("User").document(currentUser.uid).get()
-            .addOnSuccessListener { document ->
-                val studentId = document.getString("studentId") ?: document.getString("userID") ?: ""
-                if (studentId.isBlank()) {
+        UserRepository.getCurrentStudentId { studentId ->
+                if (studentId.isNullOrBlank()) {
                     Toast.makeText(context, "학번 정보를 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
-                    return@addOnSuccessListener
+                    return@getCurrentStudentId
                 }
 
                 arguments?.let { args ->
@@ -194,10 +181,7 @@ class ManualReservationInputFragment : Fragment() {
                     pendingReservationForNotification = reservation
                     reservationViewModel.makeReservation(reservation)
                 }
-            }
-            .addOnFailureListener {
-                Toast.makeText(context, "사용자 정보를 불러올 수 없습니다.", Toast.LENGTH_SHORT).show()
-            }
+        }
     }
 
     private fun showSuccessDialog() {

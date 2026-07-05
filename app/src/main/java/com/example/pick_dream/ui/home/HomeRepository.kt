@@ -2,7 +2,7 @@ package com.example.pick_dream.ui.home
 
 import android.content.Context
 import com.example.pick_dream.model.Reservation
-import com.google.firebase.auth.FirebaseAuth
+import com.example.pick_dream.repository.UserRepository
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.toObject
 
@@ -13,21 +13,16 @@ import com.google.firebase.firestore.ktx.toObject
 object HomeRepository {
 
     private val db = FirebaseFirestore.getInstance()
-    private val auth = FirebaseAuth.getInstance()
 
     /**
      * 현재 로그인한 사용자의 예약 목록 중 진행 중이거나 가장 가까운 예정 예약을 콜백으로 반환합니다.
      * @param onResult 조회 결과 콜백. 유효한 예약이 없으면 null을 반환합니다.
      */
     fun fetchActiveOrUpcomingReservation(onResult: (Reservation?) -> Unit) {
-        val currentUser = auth.currentUser ?: run { onResult(null); return }
-
-        db.collection("User").document(currentUser.uid).get()
-            .addOnSuccessListener { userDoc ->
-                val studentId = userDoc.getString("studentId") ?: userDoc.getString("userID")
+        UserRepository.getCurrentStudentId { studentId ->
                 if (studentId.isNullOrBlank()) {
                     onResult(null)
-                    return@addOnSuccessListener
+                    return@getCurrentStudentId
                 }
 
                 db.collection("Reservations")
@@ -53,8 +48,7 @@ object HomeRepository {
                         onResult(active ?: upcoming)
                     }
                     .addOnFailureListener { onResult(null) }
-            }
-            .addOnFailureListener { onResult(null) }
+        }
     }
 
     /**

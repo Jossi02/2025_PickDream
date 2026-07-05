@@ -6,10 +6,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.pick_dream.model.Reservation
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
+import com.example.pick_dream.repository.UserRepository
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 class ReservationViewModel : ViewModel() {
 
@@ -23,16 +21,11 @@ class ReservationViewModel : ViewModel() {
     val message: LiveData<String> get() = _message
 
     fun loadReservations() {
-        val currentUser = FirebaseAuth.getInstance().currentUser ?: return
         _isLoading.value = true
 
         viewModelScope.launch {
             try {
-                // User 컬렉션에서 studentId 가져오기
-                val userDoc = FirebaseFirestore.getInstance()
-                    .collection("User").document(currentUser.uid).get().await()
-                
-                val studentId = userDoc.getString("studentId") ?: userDoc.getString("userID")
+                val studentId = UserRepository.getCurrentStudentId()
                 if (studentId.isNullOrBlank()) {
                     _listItems.value = emptyList()
                     _isLoading.value = false

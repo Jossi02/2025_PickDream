@@ -99,11 +99,15 @@ python -m unittest discover -s functions/tests -v
   - `blocked_existing_reservation`: 같은 시간에 이미 사용자 예약이 있어 새 예약을 만들 수 없는 차단 상태.
   - `blocked_existing_reservation`은 더 이상 `예약 확정`으로 처리되지 않도록 방어 로직을 추가했습니다.
   - 사용자가 단순히 “다른 강의실로 해줘”라고 말한 경우 기존 예약 변경으로 해석하지 않고, “기존 예약을 다른 강의실로 변경해줘”처럼 명시적으로 요청한 경우에만 변경 제안으로 이어지도록 분리했습니다.
+- Android 사용자 식별자 접근을 `UserRepository`로 공통화했습니다.
+  - `getCurrentUid()`, `getCurrentUser()`, `getCurrentStudentId()`를 추가했습니다.
+  - 예약 내역, 후기 내역, 후기 작성, 홈 현재 예약, 수동 예약, 찜 강의실, LLM 알림 후속 처리에서 반복되던 `FirebaseAuth.currentUser`/`User` 문서 조회를 제거했습니다.
+  - `LoginActivity`는 인증 자체를 담당하므로 직접 `FirebaseAuth` 사용을 유지했습니다.
+  - `LlmFragment`의 메시지 전송은 Firebase ID Token 발급이 필요하므로 직접 `currentUser.getIdToken()` 사용을 유지했습니다.
+  - 검증: Android Gradle 테스트 `.\gradlew.bat test` 통과.
 
 ### 다음 우선순위
-1. Android 데이터 접근 정리
-   - `UserRepository.getCurrentStudentId()` 같은 공통 유틸/Repository를 만들어 `studentId` 조회 중복 제거.
-2. Android 테스트 보강
+1. Android 테스트 보강
    - `RoomIdUtils`, 예약 시간 overlap, 과거 시간 예약 방지, AI 카드 파서 테스트 추가.
-3. Firestore 보안 규칙 재검토
+2. Firestore 보안 규칙 재검토
    - 현재 기능 안정화를 위해 완화된 규칙을 소유자 기반 권한으로 다시 좁히는 작업 필요.

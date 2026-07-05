@@ -14,11 +14,10 @@ import androidx.navigation.NavOptions
 import androidx.activity.OnBackPressedCallback
 import androidx.lifecycle.lifecycleScope
 import com.example.pick_dream.notification.PickDreamNotificationManager
+import com.example.pick_dream.repository.UserRepository
 import com.example.pick_dream.ui.home.reservation.ReservationRepository
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 class LlmFragment : Fragment() {
     private var _binding: FragmentLlmBinding? = null
@@ -172,13 +171,7 @@ class LlmFragment : Fragment() {
 
     private fun scheduleUpcomingUsageReminders() {
         viewLifecycleOwner.lifecycleScope.launch {
-            val currentUser = FirebaseAuth.getInstance().currentUser ?: return@launch
-            val userDoc = FirebaseFirestore.getInstance()
-                .collection("User")
-                .document(currentUser.uid)
-                .get()
-                .await()
-            val studentId = userDoc.getString("studentId") ?: userDoc.getString("userID")
+            val studentId = UserRepository.getCurrentStudentId()
             if (studentId.isNullOrBlank() || !isAdded) return@launch
 
             val reservations = ReservationRepository.getReservationsByUser(studentId)
