@@ -489,6 +489,65 @@ def display_room_label(room_id, room_data=None):
     return "\uac15\uc758\uc2e4"
 
 
+FLOW_NEW_RESERVATION = "new_reservation"
+FLOW_BLOCKED_EXISTING_RESERVATION = "blocked_existing_reservation"
+FLOW_ALTERNATIVE_NEW_RESERVATION = "alternative_new_reservation"
+FLOW_CHANGE_EXISTING_RESERVATION = "change_existing_reservation"
+
+CONFIRMABLE_PENDING_FLOWS = {
+    FLOW_NEW_RESERVATION,
+    FLOW_ALTERNATIVE_NEW_RESERVATION,
+    FLOW_CHANGE_EXISTING_RESERVATION,
+}
+
+
+def infer_pending_flow_type(pending_data):
+    flow_type = (pending_data or {}).get("flowType")
+    if flow_type:
+        return flow_type
+    if (pending_data or {}).get("replaceReservationId"):
+        return FLOW_CHANGE_EXISTING_RESERVATION
+    if (pending_data or {}).get("blockedByReservationId"):
+        return FLOW_BLOCKED_EXISTING_RESERVATION
+    return FLOW_NEW_RESERVATION
+
+
+def can_confirm_pending(pending_data):
+    return infer_pending_flow_type(pending_data) in CONFIRMABLE_PENDING_FLOWS
+
+
+def build_pending_reservation_data(
+    room,
+    start,
+    duration,
+    event_participants=None,
+    owner_uid="",
+    event_name=None,
+    event_description="",
+    event_target="",
+    flow_type=FLOW_NEW_RESERVATION,
+    replace_reservation_id=None,
+    blocked_by_reservation_id=None,
+):
+    data = {
+        "room": room,
+        "startTime": start.isoformat() if isinstance(start, datetime) else start,
+        "duration": duration,
+        "eventName": event_name or "\ucd94\ucc9c \uc608\uc57d",
+        "eventDescription": event_description or "",
+        "eventTarget": event_target or "",
+        "ownerUid": owner_uid,
+        "flowType": flow_type,
+    }
+    if event_participants is not None:
+        data["eventParticipants"] = str(event_participants).strip()
+    if replace_reservation_id:
+        data["replaceReservationId"] = replace_reservation_id
+    if blocked_by_reservation_id:
+        data["blockedByReservationId"] = blocked_by_reservation_id
+    return data
+
+
 def suggest_alternative_room_response(
     original_room_name,
     start,
@@ -518,18 +577,19 @@ def suggest_alternative_room_response(
 
     _, alt_room_id, _, alt_room_data = alternatives[0]
     alt_room_name = display_room_label(alt_room_id, alt_room_data)
-    pending_data = {
-        "room": alt_room_id,
-        "startTime": start.isoformat(),
-        "duration": duration,
-        "eventName": "\ucd94\ucc9c \uc608\uc57d",
-        "eventDescription": "",
-        "eventTarget": "",
-        "eventParticipants": str(event_participants or "").strip(),
-        "ownerUid": owner_uid,
-    }
-    if replace_reservation_id:
-        pending_data["replaceReservationId"] = replace_reservation_id
+    pending_data = build_pending_reservation_data(
+        room=alt_room_id,
+        start=start,
+        duration=duration,
+        event_participants=event_participants,
+        owner_uid=owner_uid,
+        flow_type=(
+            FLOW_CHANGE_EXISTING_RESERVATION
+            if replace_reservation_id
+            else FLOW_ALTERNATIVE_NEW_RESERVATION
+        ),
+        replace_reservation_id=replace_reservation_id,
+    )
     db.collection("PendingReservations").document(userID).set(pending_data)
     action_hint = (
         "\uae30\uc874 \uc608\uc57d\uc744 \uc774 \uac15\uc758\uc2e4\ub85c \ubcc0\uacbd"
@@ -624,6 +684,7 @@ def handle_reserve(query, userID):
         room_raw = query.get("room")
         room_id, room_data = find_room(room_raw)
         allow_alternative_room = bool(query.pop("allowAlternativeRoom", False))
+        explicit_change_reservation = bool(query.pop("explicitChangeReservation", False))
 
         pending = db.collection("PendingReservations").document(userID).get()
         if pending.exists:
@@ -632,6 +693,15 @@ def handle_reserve(query, userID):
                 pending_room_id = pending_data.get("room")
                 _, pending_room_data = find_room(pending_room_id)
                 pending_room_name = display_room_label(pending_room_id, pending_room_data)
+                if not explicit_change_reservation:
+                    return https_fn.Response(
+                        f"\uc774\ubbf8 {pending_room_name}\uc744(\ub97c) \ud574\ub2f9 \uc2dc\uac04\uc5d0 \uc608\uc57d\ud574\ub450\uc168\uc5b4\uc694.\n\n"
+                        "\uc0c8 \uc608\uc57d\uc744 \ucd94\uac00\ub85c \ub9cc\ub4e4 \uc218\ub294 \uc5c6\uc5b4\uc694. "
+                        "\ub2e4\ub978 \uc2dc\uac04\ub300\ub97c \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.\n"
+                        "\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubc14\uafb8\ub824\uba74 "
+                        "'\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubcc0\uacbd\ud574\uc918'\ub77c\uace0 \uc785\ub825\ud574 \uc8fc\uc138\uc694.",
+                        status=409,
+                    )
                 try:
                     pending_start = datetime.fromisoformat(str(pending_data.get("startTime")))
                     if pending_start.tzinfo is None:
@@ -715,6 +785,7 @@ def handle_reserve(query, userID):
                             "eventTarget": query.get("eventTarget", ""),
                             "ownerUid": owner_uid,
                             "blockedByReservationId": user_conflict_id,
+                            "flowType": FLOW_BLOCKED_EXISTING_RESERVATION,
                         },
                         merge=True,
                     )
@@ -735,6 +806,7 @@ def handle_reserve(query, userID):
                             "eventDescription": query.get("eventDescription", ""),
                             "eventTarget": query.get("eventTarget", ""),
                             "ownerUid": owner_uid,
+                            "flowType": FLOW_BLOCKED_EXISTING_RESERVATION,
                         },
                         merge=True,
                     )
@@ -748,6 +820,7 @@ def handle_reserve(query, userID):
 
         missing_details = missing_required_fields(query, ("startTime", "duration", "eventParticipants"))
         if missing_details:
+            query["flowType"] = query.get("flowType") or FLOW_NEW_RESERVATION
             db.collection("PendingReservations").document(userID).set(query, merge=True)
             friendly_names = {
                 "startTime": "시작 시간",
@@ -794,6 +867,7 @@ def handle_reserve(query, userID):
         query["ownerUid"] = owner_uid
         missing = missing_required_fields(query, required_fields)
         if missing:
+            query["flowType"] = query.get("flowType") or FLOW_NEW_RESERVATION
             db.collection("PendingReservations").document(userID).set(query, merge=True)
             friendly_names = {
                 "room": "강의실",
@@ -819,6 +893,30 @@ def handle_reserve(query, userID):
             _, conflict_room_data = find_room(conflict_room_id)
             conflict_room_name = display_room_label(conflict_room_id, conflict_room_data)
             if allow_alternative_room:
+                if not explicit_change_reservation:
+                    db.collection("PendingReservations").document(userID).set(
+                        build_pending_reservation_data(
+                            room=conflict_room_id,
+                            start=start,
+                            duration=query["duration"],
+                            event_participants=query.get("eventParticipants"),
+                            event_name=query.get("eventName"),
+                            event_description=query.get("eventDescription", ""),
+                            event_target=query.get("eventTarget", ""),
+                            owner_uid=owner_uid,
+                            flow_type=FLOW_BLOCKED_EXISTING_RESERVATION,
+                            blocked_by_reservation_id=user_conflict_id,
+                        ),
+                        merge=True,
+                    )
+                    return https_fn.Response(
+                        f"\uc774\ubbf8 {conflict_room_name}\uc744(\ub97c) \ud574\ub2f9 \uc2dc\uac04\uc5d0 \uc608\uc57d\ud574\ub450\uc168\uc5b4\uc694.\n\n"
+                        "\uc0c8 \uc608\uc57d\uc744 \ucd94\uac00\ub85c \ub9cc\ub4e4 \uc218\ub294 \uc5c6\uc5b4\uc694. "
+                        "\ub2e4\ub978 \uc2dc\uac04\ub300\ub97c \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.\n"
+                        "\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubc14\uafb8\ub824\uba74 "
+                        "'\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubcc0\uacbd\ud574\uc918'\ub77c\uace0 \uc785\ub825\ud574 \uc8fc\uc138\uc694.",
+                        status=409,
+                    )
                 return suggest_alternative_room_response(
                     conflict_room_name,
                     start,
@@ -841,6 +939,7 @@ def handle_reserve(query, userID):
                     "eventParticipants": str(query.get("eventParticipants", "")).strip(),
                     "ownerUid": owner_uid,
                     "blockedByReservationId": user_conflict_id,
+                    "flowType": FLOW_BLOCKED_EXISTING_RESERVATION,
                 },
                 merge=True,
             )
@@ -883,9 +982,11 @@ def handle_reserve(query, userID):
                 "eventTarget": query.get("eventTarget", ""),
                 "eventParticipants": str(query.get("eventParticipants", "")).strip(),
                 "ownerUid": owner_uid,
+                "flowType": FLOW_NEW_RESERVATION,
             }
             if query.get("replaceReservationId"):
                 pending_data["replaceReservationId"] = query["replaceReservationId"]
+                pending_data["flowType"] = FLOW_CHANGE_EXISTING_RESERVATION
             db.collection("PendingReservations").document(userID).set(pending_data, merge=True)
             return https_fn.Response(
                 "예약 내용을 확인해 주세요 😊\n\n"
@@ -932,6 +1033,13 @@ def handle_confirm_reservation(query, userID):
         return https_fn.Response("확정할 예약 내용이 없어요. 먼저 예약할 시간과 인원을 알려 주세요.", status=400)
 
     pending_data = pending.to_dict()
+    if not can_confirm_pending(pending_data):
+        return https_fn.Response(
+            "\ud655\uc815\ud560 \uc608\uc57d \uc81c\uc548\uc774 \uc544\ub2c8\uc5d0\uc694. "
+            "\uc0c8 \uc608\uc57d\uc744 \ub9cc\ub4e4\ub824\uba74 \ub2e4\ub978 \uc2dc\uac04\ub300\ub97c \uc120\ud0dd\ud574 \uc8fc\uc138\uc694. "
+            "\uae30\uc874 \uc608\uc57d\uc744 \ubc14\uafb8\ub824\uba74 '\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubcc0\uacbd\ud574\uc918'\ub77c\uace0 \uc785\ub825\ud574 \uc8fc\uc138\uc694.",
+            status=409,
+        )
     pending_data["ownerUid"] = query.get("ownerUid", pending_data.get("ownerUid", ""))
     pending_data["confirmed"] = True
     pending_data.pop("needsConfirmation", None)
@@ -1260,6 +1368,7 @@ def handle_recommend_room(query, userID):
         "room": room_id,
         "startTime": pending_start_time,
         "duration": duration,
+        "flowType": FLOW_NEW_RESERVATION,
         "eventName": query.get("eventName", "추천 예약")
     }
     if person_count is not None:

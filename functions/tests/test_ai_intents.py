@@ -38,6 +38,26 @@ class AiIntentTest(unittest.TestCase):
         self.assertEqual(2, main.parse_duration_hours("2\uc2dc\uac04\uc73c\ub85c \ubcc0\uacbd\ud574\uc918"))
         self.assertEqual(6, main.parse_participant_count("6\uba85\uc73c\ub85c \ubc14\uafd4\uc918"))
 
+    def test_pending_flow_type_inference(self):
+        self.assertEqual(
+            main.FLOW_NEW_RESERVATION,
+            main.infer_pending_flow_type({}),
+        )
+        self.assertEqual(
+            main.FLOW_CHANGE_EXISTING_RESERVATION,
+            main.infer_pending_flow_type({"replaceReservationId": "abc"}),
+        )
+        self.assertEqual(
+            main.FLOW_BLOCKED_EXISTING_RESERVATION,
+            main.infer_pending_flow_type({"blockedByReservationId": "abc"}),
+        )
+
+    def test_blocked_pending_is_not_confirmable(self):
+        self.assertTrue(main.can_confirm_pending({"flowType": main.FLOW_NEW_RESERVATION}))
+        self.assertTrue(main.can_confirm_pending({"flowType": main.FLOW_ALTERNATIVE_NEW_RESERVATION}))
+        self.assertTrue(main.can_confirm_pending({"flowType": main.FLOW_CHANGE_EXISTING_RESERVATION}))
+        self.assertFalse(main.can_confirm_pending({"flowType": main.FLOW_BLOCKED_EXISTING_RESERVATION}))
+
 
 if __name__ == "__main__":
     unittest.main()

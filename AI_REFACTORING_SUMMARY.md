@@ -92,13 +92,18 @@ python -m unittest discover -s functions/tests -v
   - `if False and has_conflict(...)` 비활성 분기 제거.
   - 도달 불가능한 중복 `return` 제거.
   - `handle_reserve()` 내부의 인원 정규화, 필수 필드 검사, 시간 파싱, 예약 문서 생성 로직을 작은 헬퍼 함수로 분리했습니다.
+- AI 예약의 임시 상태 문서인 `PendingReservations`에 `flowType`을 도입했습니다.
+  - `new_reservation`: 새 예약 확인 대기.
+  - `alternative_new_reservation`: 빈 강의실 자동 제안 후 새 예약 확인 대기.
+  - `change_existing_reservation`: 기존 예약을 다른 조건/강의실로 변경하는 확인 대기.
+  - `blocked_existing_reservation`: 같은 시간에 이미 사용자 예약이 있어 새 예약을 만들 수 없는 차단 상태.
+  - `blocked_existing_reservation`은 더 이상 `예약 확정`으로 처리되지 않도록 방어 로직을 추가했습니다.
+  - 사용자가 단순히 “다른 강의실로 해줘”라고 말한 경우 기존 예약 변경으로 해석하지 않고, “기존 예약을 다른 강의실로 변경해줘”처럼 명시적으로 요청한 경우에만 변경 제안으로 이어지도록 분리했습니다.
 
 ### 다음 우선순위
-1. AI 예약 상태 명시화
-   - `PendingReservations`에 `flowType`을 추가해 `new_reservation`, `change_reservation`, `alternative_room`, `cancel_reservation` 상태를 명확히 구분.
-2. Android 데이터 접근 정리
+1. Android 데이터 접근 정리
    - `UserRepository.getCurrentStudentId()` 같은 공통 유틸/Repository를 만들어 `studentId` 조회 중복 제거.
-3. Android 테스트 보강
+2. Android 테스트 보강
    - `RoomIdUtils`, 예약 시간 overlap, 과거 시간 예약 방지, AI 카드 파서 테스트 추가.
-4. Firestore 보안 규칙 재검토
+3. Firestore 보안 규칙 재검토
    - 현재 기능 안정화를 위해 완화된 규칙을 소유자 기반 권한으로 다시 좁히는 작업 필요.
