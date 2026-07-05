@@ -87,16 +87,18 @@ python -m unittest discover -s functions/tests -v
 - 로그인 화면에서 앱 실행 시 Firestore/Auth 테스트 데이터를 자동 삽입하던 `seedDatabaseIfNeeded()` 호출과 구현을 제거했습니다.
   - 제거 이유: 실제 Firebase 데이터 오염, 테스트 계정/임시 데이터 하드코딩, 설치 초기화 시 재실행 가능성.
   - 테스트/초기 데이터가 필요하면 앱 런타임 코드가 아니라 별도 스크립트나 Firebase 콘솔에서 관리하는 방향이 안전합니다.
+- `functions/main.py`의 예약 처리 로직에서 죽은 코드와 도달 불가능한 분기를 제거했습니다.
+  - `for doc in []:` 임시 루프 제거.
+  - `if False and has_conflict(...)` 비활성 분기 제거.
+  - 도달 불가능한 중복 `return` 제거.
+  - `handle_reserve()` 내부의 인원 정규화, 필수 필드 검사, 시간 파싱, 예약 문서 생성 로직을 작은 헬퍼 함수로 분리했습니다.
 
 ### 다음 우선순위
-1. `functions/main.py` 정리
-   - `for doc in []:` 같은 죽은 코드 제거.
-   - `handle_reserve()`를 pending 병합, 충돌 확인, 대체 강의실 제안, 저장 로직으로 분리.
-2. AI 예약 상태 명시화
+1. AI 예약 상태 명시화
    - `PendingReservations`에 `flowType`을 추가해 `new_reservation`, `change_reservation`, `alternative_room`, `cancel_reservation` 상태를 명확히 구분.
-3. Android 데이터 접근 정리
+2. Android 데이터 접근 정리
    - `UserRepository.getCurrentStudentId()` 같은 공통 유틸/Repository를 만들어 `studentId` 조회 중복 제거.
-4. Android 테스트 보강
+3. Android 테스트 보강
    - `RoomIdUtils`, 예약 시간 overlap, 과거 시간 예약 방지, AI 카드 파서 테스트 추가.
-5. Firestore 보안 규칙 재검토
+4. Firestore 보안 규칙 재검토
    - 현재 기능 안정화를 위해 완화된 규칙을 소유자 기반 권한으로 다시 좁히는 작업 필요.

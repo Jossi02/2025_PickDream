@@ -558,6 +558,63 @@ def handle_query_equipment(query, userID):
     return https_fn.Response(f"{room_name}에 '{item}'이(가) {'있습니다' if item in eq else '없습니다' }.", status=200)
 
 
+def normalize_event_participants(query):
+    event_participants_value = query.get("eventParticipants")
+
+    if not event_participants_value and query.get("keywords"):
+        person_count = next(
+            (
+                int(k.replace("명", ""))
+                for k in query.get("keywords", [])
+                if isinstance(k, str) and k.endswith("명") and k[:-1].isdigit()
+            ),
+            None,
+        )
+        if person_count:
+            event_participants_value = str(person_count)
+
+    if isinstance(event_participants_value, str):
+        return event_participants_value.strip()
+    return str(event_participants_value or "").strip()
+
+
+def missing_required_fields(query, fields):
+    return [
+        field
+        for field in fields
+        if not query.get(field) or not str(query.get(field)).strip()
+    ]
+
+
+def parse_reservation_start_and_duration(query):
+    query["duration"] = int(query["duration"])
+    start = datetime.fromisoformat(query["startTime"])
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=KST)
+    return start, query["duration"]
+
+
+def parse_participants_int(value):
+    numeric_part = re.search(r"\d+", str(value or "0").strip())
+    return int(numeric_part.group()) if numeric_part else 1
+
+
+def build_reservation_document(query, userID, owner_uid, start, end):
+    return {
+        "documentId": "",
+        "roomID": query["room"],
+        "startTime": format_korean_time(start),
+        "endTime": format_korean_time(end),
+        "eventName": query.get("eventName", "추천 예약"),
+        "eventDescription": query.get("eventDescription", ""),
+        "eventTarget": query.get("eventTarget", ""),
+        "eventParticipants": parse_participants_int(query.get("eventParticipants")),
+        "status": query.get("status", "대기"),
+        "userID": userID,
+        "ownerUid": owner_uid,
+    }
+
+
 def handle_reserve(query, userID):
     try:
         logging.info(f"[handle_reserve] input query: {query}")
@@ -619,25 +676,7 @@ def handle_reserve(query, userID):
         query["eventName"] = query.get("eventName") or "추천 예약"
         query["eventDescription"] = query.get("eventDescription") or ""
         query["eventTarget"] = query.get("eventTarget") or ""
-        
-        # 'eventParticipants' 키의 값을 가져옵니다.
-        event_participants_value = query.get("eventParticipants")
-        
-        # 값이 없으면 keywords에서 추출 시도
-        if not event_participants_value and query.get("keywords"):
-            person_count = next(
-                (int(k.replace("명", "")) for k in query.get("keywords", []) if isinstance(k, str) and k.endswith("명") and k[:-1].isdigit()), 
-                None
-            )
-            if person_count:
-                event_participants_value = str(person_count)
-
-        # 값이 문자열인 경우, 공백을 제거합니다.
-        if isinstance(event_participants_value, str):
-            query["eventParticipants"] = event_participants_value.strip()
-        else:
-            query["eventParticipants"] = str(event_participants_value or "").strip()
-            
+        query["eventParticipants"] = normalize_event_participants(query)
         query["status"] = "대기"
 
         has_room_and_time = bool(query.get("room")) and bool(query.get("startTime"))
@@ -707,11 +746,7 @@ def handle_reserve(query, userID):
             except Exception as e:
                 logging.warning("[handle_reserve] early conflict check skipped: %s", e)
 
-        missing_details = [
-            field
-            for field in ("startTime", "duration", "eventParticipants")
-            if not query.get(field) or not str(query.get(field)).strip()
-        ]
+        missing_details = missing_required_fields(query, ("startTime", "duration", "eventParticipants"))
         if missing_details:
             db.collection("PendingReservations").document(userID).set(query, merge=True)
             friendly_names = {
@@ -723,22 +758,19 @@ def handle_reserve(query, userID):
             return https_fn.Response(f"다음 정보가 필요해요: {readable}", status=400)
 
         try:
-            query["duration"] = int(query["duration"])
-            start = datetime.fromisoformat(query["startTime"])
-            if start.tzinfo is None:
-                start = start.replace(tzinfo=KST)
+            start, duration = parse_reservation_start_and_duration(query)
         except Exception as e:
             logging.exception(f"[handle_reserve] 시간 파싱 실패: {query.get('startTime')}")
             return https_fn.Response("시작 시간이 올바른 형식이 아니에요. (예: 내일 오후 3시)", status=400)
 
-        if query["duration"] < 1 or query["duration"] > 6:
+        if duration < 1 or duration > 6:
             return https_fn.Response("예약 시간은 최소 1시간, 최대 6시간까지만 가능합니다.", status=400)
 
         now = datetime.now(KST)
         if start < now:
             return https_fn.Response("예약 시작 시간은 현재 시간 이후여야 해요.", status=400)
 
-        end = start + timedelta(hours=query["duration"])
+        end = start + timedelta(hours=duration)
 
         # 자동으로 빈 강의실 찾기 로직
         if not query.get("room") or str(query.get("room")).strip() == "":
@@ -748,16 +780,6 @@ def handle_reserve(query, userID):
                 person_count = 0
                 
             matched = find_available_rooms(start, end, person_count=person_count)
-            for doc in []:
-                r_data = doc.to_dict()
-                canonical_room_id = reservation_room_id(doc.id, r_data)
-                cap = coerce_capacity(r_data.get("capacity"))
-                if person_count > 0 and cap < person_count:
-                    continue
-
-                # 중복 예약 확인
-                if not has_conflict("roomID", canonical_room_id, start, end):
-                    matched.append((cap, canonical_room_id, doc.id, r_data))
             
             if not matched:
                 return https_fn.Response("해당 시간에 원하시는 인원을 수용할 수 있는 빈 강의실이 없습니다 😥", status=409)
@@ -770,7 +792,7 @@ def handle_reserve(query, userID):
 
         required_fields = ["room", "startTime", "duration", "userID", "eventParticipants", "ownerUid"]
         query["ownerUid"] = owner_uid
-        missing = [f for f in required_fields if not query.get(f) or str(query.get(f)).strip() == ""]
+        missing = missing_required_fields(query, required_fields)
         if missing:
             db.collection("PendingReservations").document(userID).set(query, merge=True)
             friendly_names = {
@@ -829,9 +851,6 @@ def handle_reserve(query, userID):
                 status=409,
             )
 
-        if False and has_conflict("userID", userID, start, end):
-            return https_fn.Response("해당 시간에 이미 예약한 강의실이 있어요. 다른 시간대를 선택해 주세요.", status=409)
-            
         _, room_data = find_room(query["room"])
         if has_conflict("roomID", query["room"], start, end):
             room_name = display_room_label(query["room"], room_data)
@@ -852,7 +871,6 @@ def handle_reserve(query, userID):
                 exclude_room_ids={query["room"]},
                 replace_reservation_id=replace_room_conflict_id,
             )
-            return https_fn.Response(f"{room_name}은 해당 시간에 이미 예약되어 있어요.", status=409)
 
         room_name = display_room_label(query["room"], room_data)
         if query.pop("needsConfirmation", False):
@@ -879,29 +897,7 @@ def handle_reserve(query, userID):
             )
 
         try:
-            # 안전하게 eventParticipants를 정수로 변환
-            participants_str = str(query.get("eventParticipants", "0")).strip()
-            # 숫자만 추출
-            numeric_part = re.search(r'\d+', participants_str)
-            event_participants_int = int(numeric_part.group()) if numeric_part else 1
-
-            # 시간 문자열 생성 후 한국어 형식으로 변환 (안드로이드 앱과 동일한 형식 맞추기 위해 %-M, %-S 사용)
-            start_str = format_korean_time(start)
-            end_str = format_korean_time(end)
-
-            res_doc = {
-                "documentId": "",
-                "roomID": query["room"],
-                "startTime": start_str,
-                "endTime": end_str,
-                "eventName": query.get("eventName", "추천 예약"),
-                "eventDescription": query.get("eventDescription", ""),
-                "eventTarget": query.get("eventTarget", ""),
-                "eventParticipants": event_participants_int,
-                "status": query.get("status", "대기"),
-                "userID": userID,
-                "ownerUid": owner_uid,
-            }
+            res_doc = build_reservation_document(query, userID, owner_uid, start, end)
             if replace_reservation_id:
                 update_doc = dict(res_doc)
                 update_doc["startTimestamp"] = firestore.DELETE_FIELD
