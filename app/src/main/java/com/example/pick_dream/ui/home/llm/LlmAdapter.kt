@@ -122,13 +122,13 @@ class LlmAdapter(
                     startTime = simplifyKoreanDateTime(timeRange[0]),
                     endTime = simplifyKoreanDateTime(timeRange[1]),
                     participants = timeAndPeople.getOrNull(1),
-                    actionLabel = if (isCancelSelection) "이 예약 취소" else null,
+                    actionLabel = if (isCancelSelection) "예약 취소" else null,
                     actionMessage = if (isCancelSelection) {
                         "$roomName ${simplifyKoreanDateTime(timeRange[0])} 예약 취소해줘"
                     } else {
                         null
                     },
-                    actionDisplayText = if (isCancelSelection) "이 예약 취소" else null
+                    actionDisplayText = if (isCancelSelection) "예약 취소" else null
                 )
             }
             .toList()
