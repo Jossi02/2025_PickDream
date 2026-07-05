@@ -263,6 +263,18 @@ def parse_duration_hours(text):
     return None
 
 
+def enrich_query_from_direct_parse(query, room_id=None, start=None, participants=None, duration=None):
+    if room_id and not query.get("room"):
+        query["room"] = room_id
+    if start and not query.get("startTime"):
+        query["startTime"] = start.isoformat()
+    if participants is not None and not query.get("eventParticipants"):
+        query["eventParticipants"] = str(participants)
+    if duration is not None and not query.get("duration"):
+        query["duration"] = duration
+    return query
+
+
 def extract_room_ids(text):
     if not text:
         return []
@@ -1692,12 +1704,13 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
             if wants_new_reservation:
                 pending_ref.delete()
             direct_query = {"ownerUid": uid, "needsConfirmation": True}
-            if direct_room_id:
-                direct_query["room"] = direct_room_id
-            if direct_start:
-                direct_query["startTime"] = direct_start.isoformat()
-            if direct_participants is not None:
-                direct_query["eventParticipants"] = str(direct_participants)
+            enrich_query_from_direct_parse(
+                direct_query,
+                room_id=direct_room_id,
+                start=direct_start,
+                participants=direct_participants,
+                duration=direct_duration,
+            )
             if wants_alternative_room:
                 direct_query["allowAlternativeRoom"] = True
                 if explicitly_changes_existing_reservation:
@@ -1831,6 +1844,22 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
                         query["startTime"] = inferred_start_iso
                 elif inferred_start and action == "cancel_reservation":
                     query["startTime"] = inferred_start.isoformat()
+
+                if action == "reserve":
+                    enrich_query_from_direct_parse(
+                        query,
+                        room_id=direct_room_id,
+                        start=inferred_start or direct_start,
+                        participants=direct_participants,
+                        duration=direct_duration,
+                    )
+                elif action == "change_reservation":
+                    enrich_query_from_direct_parse(
+                        query,
+                        start=inferred_start or direct_start,
+                        participants=direct_participants,
+                        duration=direct_duration,
+                    )
 
                 if action == "recommend_room":
                     query["keywords"] = list(query.get("keywords", []))

@@ -120,6 +120,10 @@ python -m unittest discover -s functions/tests -v
   - `기존 예약을 다른 강의실로 변경해줘` 요청은 추가 정보를 묻지 않고 가장 가까운 기존 예약의 시간/인원을 사용해 대체 강의실을 바로 제안하도록 했습니다.
   - 예약 취소 후보는 최대 5개까지 반환하도록 확장했습니다.
   - 검증: Functions 단위 테스트 `python -m unittest discover -s functions/tests -v` 통과.
+- AI 새 예약 요청에서 LLM이 도구 인자를 누락해도 서버가 원문에서 시간/강의실/인원을 다시 채우도록 보강했습니다.
+  - `모레 오전 11시에 7202 강의실 예약해줘. 5명이야` 같은 문장이 `시작 시간, 이용 인원 수` 누락으로 되묻는 문제를 방지합니다.
+  - direct 예약 경로와 LLM function-call `reserve` 경로 양쪽에 `enrich_query_from_direct_parse()`를 적용했습니다.
+  - 검증: Functions 단위 테스트 `24 tests OK`.
 
 ### 다음 우선순위
 - 큰 우선순위 리팩토링 항목은 완료했습니다.

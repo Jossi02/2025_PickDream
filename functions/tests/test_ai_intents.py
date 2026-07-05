@@ -2,12 +2,14 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from datetime import datetime
 
 
 os.environ.setdefault("GEMINI_API_KEY", "dummy")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import main  # noqa: E402
+from reservation_utils import KST  # noqa: E402
 
 
 class AiIntentTest(unittest.TestCase):
@@ -39,6 +41,31 @@ class AiIntentTest(unittest.TestCase):
         self.assertEqual(["7202", "5101"], main.extract_room_ids("7202\ub97c 5101\ub85c \ubcc0\uacbd\ud574\uc918"))
         self.assertEqual(2, main.parse_duration_hours("2\uc2dc\uac04\uc73c\ub85c \ubcc0\uacbd\ud574\uc918"))
         self.assertEqual(6, main.parse_participant_count("6\uba85\uc73c\ub85c \ubc14\uafd4\uc918"))
+
+    def test_direct_reservation_sentence_parses_all_required_fields(self):
+        text = "\ubaa8\ub808 \uc624\uc804 11\uc2dc\uc5d0 7202 \uac15\uc758\uc2e4 \uc608\uc57d\ud574\uc918. 5\uba85\uc774\uc57c"
+        now = datetime(2026, 7, 5, 21, 0, tzinfo=KST)
+        start = main.parse_natural_korean_datetime(text, now)
+
+        self.assertEqual("7202", main.extract_room_id(text))
+        self.assertEqual(5, main.parse_participant_count(text))
+        self.assertEqual(datetime(2026, 7, 7, 11, 0, tzinfo=KST), start)
+
+    def test_enrich_query_from_direct_parse_fills_missing_reserve_args(self):
+        query = {"ownerUid": "uid", "needsConfirmation": True}
+        start = datetime(2026, 7, 7, 11, 0, tzinfo=KST)
+
+        main.enrich_query_from_direct_parse(
+            query,
+            room_id="7202",
+            start=start,
+            participants=5,
+            duration=None,
+        )
+
+        self.assertEqual("7202", query["room"])
+        self.assertEqual(start.isoformat(), query["startTime"])
+        self.assertEqual("5", query["eventParticipants"])
 
     def test_pending_flow_type_inference(self):
         self.assertEqual(
