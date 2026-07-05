@@ -105,9 +105,12 @@ python -m unittest discover -s functions/tests -v
   - `LoginActivity`는 인증 자체를 담당하므로 직접 `FirebaseAuth` 사용을 유지했습니다.
   - `LlmFragment`의 메시지 전송은 Firebase ID Token 발급이 필요하므로 직접 `currentUser.getIdToken()` 사용을 유지했습니다.
   - 검증: Android Gradle 테스트 `.\gradlew.bat test` 통과.
+- Android 단위 테스트를 보강했습니다.
+  - `ReservationTimeUtils`를 추가해 수동 예약의 시간 문자열 생성, 파싱, 과거 시간 판정, 예약 겹침 판정을 ViewModel 밖으로 분리했습니다.
+  - `RoomIdUtilsTest`를 추가해 `7202`, `202`, `7강의동` 검색/alias 동작을 검증합니다.
+  - `ReservationTimeUtilsTest`를 추가해 시간 파싱, 경계가 맞닿은 예약 허용, 부분 겹침 차단, 취소/거절 예약 제외, 과거 시간 판정을 검증합니다.
+  - 검증: Android Gradle 테스트 `.\gradlew.bat test` 통과.
 
 ### 다음 우선순위
-1. Android 테스트 보강
-   - `RoomIdUtils`, 예약 시간 overlap, 과거 시간 예약 방지, AI 카드 파서 테스트 추가.
-2. Firestore 보안 규칙 재검토
+1. Firestore 보안 규칙 재검토
    - 현재 기능 안정화를 위해 완화된 규칙을 소유자 기반 권한으로 다시 좁히는 작업 필요.
