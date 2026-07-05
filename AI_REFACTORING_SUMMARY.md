@@ -110,7 +110,15 @@ python -m unittest discover -s functions/tests -v
   - `RoomIdUtilsTest`를 추가해 `7202`, `202`, `7강의동` 검색/alias 동작을 검증합니다.
   - `ReservationTimeUtilsTest`를 추가해 시간 파싱, 경계가 맞닿은 예약 허용, 부분 겹침 차단, 취소/거절 예약 제외, 과거 시간 판정을 검증합니다.
   - 검증: Android Gradle 테스트 `.\gradlew.bat test` 통과.
+- Firestore 보안 규칙을 재검토하고 좁혔습니다.
+  - `Reservations`는 기존의 소유자 기반 생성/수정/삭제 규칙을 유지했습니다.
+  - `Reviews`는 기존 `request.auth != null` 전체 쓰기 허용에서, 현재 로그인 사용자의 학번(`studentId`/`userID`)과 리뷰의 `userID`가 일치할 때만 생성/수정/삭제 가능하도록 변경했습니다.
+  - `currentStudentId()` 공통 rules 함수를 추가해 `studentId`와 legacy `userID` 필드를 모두 처리합니다.
+  - 검증 및 반영: `firebase deploy --only firestore:rules --project pickdreamtest` 성공.
 
 ### 다음 우선순위
-1. Firestore 보안 규칙 재검토
-   - 현재 기능 안정화를 위해 완화된 규칙을 소유자 기반 권한으로 다시 좁히는 작업 필요.
+- 큰 우선순위 리팩토링 항목은 완료했습니다.
+- 이후 권장 작업:
+  1. 실제 앱에서 수동 예약, AI 예약, 후기 작성, 찜 강의실 토글 회귀 테스트.
+  2. AI 카드 파서/빠른 응답 버튼에 대한 Android 단위 테스트 추가.
+  3. Firebase Emulator 기반 rules 테스트 도입.

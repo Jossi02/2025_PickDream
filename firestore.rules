@@ -6,12 +6,25 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function currentUserData() {
+      return get(/databases/$(database)/documents/User/$(request.auth.uid)).data;
+    }
+
+    function currentStudentId() {
+      return ('studentId' in currentUserData())
+        ? currentUserData().studentId
+        : currentUserData().userID;
+    }
+
     function isReservationOwner(data) {
       return isSignedIn() && (
         ('ownerUid' in data && data.ownerUid == request.auth.uid) ||
-        (!('ownerUid' in data) &&
-          get(/databases/$(database)/documents/User/$(request.auth.uid)).data.studentId == data.userID)
+        (!('ownerUid' in data) && currentStudentId() == data.userID)
       );
+    }
+
+    function isReviewOwner(data) {
+      return isSignedIn() && currentStudentId() == data.userID;
     }
 
     // 유저 전용 문서 및 서브컬렉션 허용
@@ -37,7 +50,12 @@ service cloud.firestore {
 
     // Reviews 컬렉션 규칙
     match /Reviews/{reviewId} {
-      allow read, write: if request.auth != null;
+      allow read: if isSignedIn();
+      allow create: if isReviewOwner(request.resource.data);
+      allow update: if isReviewOwner(resource.data)
+                    && isReviewOwner(request.resource.data)
+                    && request.resource.data.userID == resource.data.userID;
+      allow delete: if isReviewOwner(resource.data);
     }
 
     // Reservations 컬렉션 규칙
