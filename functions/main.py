@@ -193,6 +193,8 @@ def is_my_reservations_request(text):
     normalized = re.sub(r"\s+", "", str(text or "")).lower()
     if not normalized:
         return False
+    if is_change_reservation_request(normalized) or is_cancel_reservation_request(normalized):
+        return False
     return any(
         phrase in normalized
         for phrase in (
@@ -1072,7 +1074,7 @@ def handle_cancel_reservation(query, userID):
         )
 
         if not target_reservation_room_id and not target_start and not query.get("forceClosest"):
-            candidates = list_user_upcoming_reservations(userID, limit=3)
+            candidates = list_user_upcoming_reservations(userID, limit=5)
             if not candidates:
                 return https_fn.Response("취소할 예약이 없습니다.", status=404)
 
@@ -1619,6 +1621,35 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
 
         if wants_my_reservations:
             res = handle_my_reservations({"ownerUid": uid}, userID)
+            bot_text = res.data.decode("utf-8") if hasattr(res, "data") else str(res)
+            return _store_direct_response(bot_text, getattr(res, "status_code", 200))
+
+        if wants_alternative_room and explicitly_changes_existing_reservation:
+            res_id, res_data, existing_start, existing_end = find_user_reservation(
+                userID,
+                room_id=direct_room_id,
+                target_start=direct_start,
+            )
+            if not res_id or not res_data or not existing_start or not existing_end:
+                return _store_direct_response("변경할 예약이 없습니다.", status=404)
+
+            existing_room_id = str(res_data.get("roomID") or res_data.get("room") or "").strip()
+            _, existing_room_data = find_room(existing_room_id)
+            existing_room_name = display_room_label(existing_room_id, existing_room_data)
+            duration_hours = max(1, int((existing_end - existing_start).total_seconds() / 3600))
+            participants = res_data.get("eventParticipants") or direct_participants or 1
+
+            res = suggest_alternative_room_response(
+                existing_room_name,
+                existing_start,
+                existing_end,
+                duration_hours,
+                participants,
+                uid,
+                userID,
+                exclude_room_ids={existing_room_id},
+                replace_reservation_id=res_id,
+            )
             bot_text = res.data.decode("utf-8") if hasattr(res, "data") else str(res)
             return _store_direct_response(bot_text, getattr(res, "status_code", 200))
 

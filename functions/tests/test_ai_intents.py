@@ -32,6 +32,8 @@ class AiIntentTest(unittest.TestCase):
         self.assertTrue(main.is_my_reservations_request("\ub0b4 \uc608\uc57d \ubcf4\uc5ec\uc918"))
         self.assertTrue(main.is_my_reservations_request("\uc608\uc57d \ub0b4\uc5ed \uc870\ud68c"))
         self.assertFalse(main.is_my_reservations_request("\uc608\uc57d\ud655\uc815"))
+        self.assertFalse(main.is_my_reservations_request("\ub0b4 \uc608\uc57d 12\uc2dc\ub85c \ubcc0\uacbd\ud574\uc918"))
+        self.assertFalse(main.is_my_reservations_request("\ub0b4 \uc608\uc57d \ucde8\uc18c\ud574\uc918"))
 
     def test_room_and_duration_parsing(self):
         self.assertEqual(["7202", "5101"], main.extract_room_ids("7202\ub97c 5101\ub85c \ubcc0\uacbd\ud574\uc918"))

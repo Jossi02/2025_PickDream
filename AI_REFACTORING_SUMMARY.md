@@ -115,6 +115,11 @@ python -m unittest discover -s functions/tests -v
   - `Reviews`는 기존 `request.auth != null` 전체 쓰기 허용에서, 현재 로그인 사용자의 학번(`studentId`/`userID`)과 리뷰의 `userID`가 일치할 때만 생성/수정/삭제 가능하도록 변경했습니다.
   - `currentStudentId()` 공통 rules 함수를 추가해 `studentId`와 legacy `userID` 필드를 모두 처리합니다.
   - 검증 및 반영: `firebase deploy --only firestore:rules --project pickdreamtest` 성공.
+- 실제 앱 회귀 테스트 중 발견된 AI 예약 변경/취소 흐름을 보완했습니다.
+  - `내 예약 12시로 변경해줘` 같은 문장이 예약 조회로 잘못 라우팅되지 않도록, 예약 조회 intent에서 변경/취소 문장을 제외했습니다.
+  - `기존 예약을 다른 강의실로 변경해줘` 요청은 추가 정보를 묻지 않고 가장 가까운 기존 예약의 시간/인원을 사용해 대체 강의실을 바로 제안하도록 했습니다.
+  - 예약 취소 후보는 최대 5개까지 반환하도록 확장했습니다.
+  - 검증: Functions 단위 테스트 `python -m unittest discover -s functions/tests -v` 통과.
 
 ### 다음 우선순위
 - 큰 우선순위 리팩토링 항목은 완료했습니다.
