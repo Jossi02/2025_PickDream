@@ -17,7 +17,7 @@ import com.google.android.material.card.MaterialCardView
 
 class LlmAdapter(
     private val messages: List<LlmMessage>,
-    private val onQuickReplyClick: (String) -> Unit = {}
+    private val onQuickReplyClick: (message: String, displayText: String) -> Unit = { _, _ -> }
 ) :
     RecyclerView.Adapter<LlmAdapter.LlmViewHolder>() {
 
@@ -88,7 +88,8 @@ class LlmAdapter(
         val endTime: String,
         val participants: String?,
         val actionLabel: String? = null,
-        val actionMessage: String? = null
+        val actionMessage: String? = null,
+        val actionDisplayText: String? = null
     )
 
     private fun parseReservationCards(text: String): List<ReservationCard> {
@@ -97,6 +98,7 @@ class LlmAdapter(
         if (!isReservationList && !isCancelSelection) {
             parseConfirmationCard(text)?.let { return listOf(it) }
             parseAlternativeRoomCard(text)?.let { return listOf(it) }
+            parseConflictCard(text)?.let { return listOf(it) }
             return emptyList()
         }
 
@@ -125,7 +127,8 @@ class LlmAdapter(
                         "$roomName ${simplifyKoreanDateTime(timeRange[0])} 예약 취소해줘"
                     } else {
                         null
-                    }
+                    },
+                    actionDisplayText = if (isCancelSelection) "이 예약 취소" else null
                 )
             }
             .toList()
@@ -136,6 +139,7 @@ class LlmAdapter(
             text.startsWith("취소할 예약을 선택해 주세요:") -> "취소할 예약을 선택해 주세요"
             text.startsWith("예약 내용을 확인해 주세요") -> "예약 내용을 확인해 주세요"
             "대신" in text && "예약 가능" in text -> "대체 강의실 제안"
+            "이미" in text && "해당 시간" in text && "예약" in text -> "예약 충돌 안내"
             else -> "현재 예약 및 예정된 예약"
         }
     }
@@ -154,7 +158,8 @@ class LlmAdapter(
             endTime = simplifyKoreanDateTime(times.second),
             participants = participants,
             actionLabel = "예약 확정",
-            actionMessage = "예약확정"
+            actionMessage = "예약확정",
+            actionDisplayText = "예약확정"
         )
     }
 
@@ -177,7 +182,34 @@ class LlmAdapter(
             endTime = simplifyKoreanDateTime(times.second),
             participants = participants,
             actionLabel = "예약 확정",
-            actionMessage = "예약확정"
+            actionMessage = "예약확정",
+            actionDisplayText = "예약확정"
+        )
+    }
+
+    private fun parseConflictCard(text: String): ReservationCard? {
+        if (!("이미" in text && "해당 시간" in text && "예약" in text)) return null
+
+        val roomName = Regex("""이미\s+(.+?)을\(를\)\s+해당\s+시간""")
+            .find(text)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+            ?: Regex("""이미\s+(.+?)은\s+해당\s+시간""")
+                .find(text)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.trim()
+            ?: return null
+
+        return ReservationCard(
+            roomName = roomName,
+            startTime = "해당 시간에 이미 예약되어 있어요.",
+            endTime = "",
+            participants = null,
+            actionLabel = "다른 강의실 찾기",
+            actionMessage = "기존 예약을 다른 강의실로 변경해줘",
+            actionDisplayText = "다른 강의실 찾기"
         )
     }
 
@@ -218,7 +250,8 @@ class LlmAdapter(
 
     private data class QuickAction(
         val label: String,
-        val message: String
+        val message: String,
+        val displayText: String = label
     )
 
     private fun parseQuickActions(text: String): List<QuickAction> {
@@ -232,7 +265,7 @@ class LlmAdapter(
                 "취소되었습니다" !in normalized
 
         if (asksForConfirmation) {
-            actions.add(QuickAction(label = "예약 확정", message = "예약확정"))
+            actions.add(QuickAction(label = "예약 확정", message = "예약확정", displayText = "예약확정"))
         }
 
         val suggestsAlternative =
@@ -241,7 +274,13 @@ class LlmAdapter(
                 "예약확정" !in normalized
 
         if (suggestsAlternative) {
-            actions.add(QuickAction(label = "다른 강의실 찾기", message = "기존 예약을 다른 강의실로 변경해줘"))
+            actions.add(
+                QuickAction(
+                    label = "다른 강의실 찾기",
+                    message = "기존 예약을 다른 강의실로 변경해줘",
+                    displayText = "다른 강의실 찾기"
+                )
+            )
         }
 
         return actions
@@ -266,7 +305,7 @@ class LlmAdapter(
                 bottomMargin = dp(context, 8)
             }
             setOnClickListener {
-                onQuickReplyClick(action.message)
+                onQuickReplyClick(action.message, action.displayText)
             }
         }
     }
@@ -299,7 +338,11 @@ class LlmAdapter(
         }
 
         val time = TextView(context).apply {
-            text = "${reservation.startTime}\n~ ${reservation.endTime}"
+            text = if (reservation.endTime.isBlank()) {
+                reservation.startTime
+            } else {
+                "${reservation.startTime}\n~ ${reservation.endTime}"
+            }
             setTextColor(Color.parseColor("#444444"))
             textSize = 14f
             setPadding(0, dp(context, 6), 0, 0)
@@ -324,7 +367,8 @@ class LlmAdapter(
                     context,
                     QuickAction(
                         label = reservation.actionLabel,
-                        message = reservation.actionMessage
+                        message = reservation.actionMessage,
+                        displayText = reservation.actionDisplayText ?: reservation.actionLabel
                     )
                 )
             )

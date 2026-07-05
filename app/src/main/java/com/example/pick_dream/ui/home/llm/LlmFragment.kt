@@ -64,8 +64,8 @@ class LlmFragment : Fragment() {
             }
         )
 
-        adapter = LlmAdapter(messages) { quickReply ->
-            sendMessage(quickReply)
+        adapter = LlmAdapter(messages) { quickReply, displayText ->
+            sendMessage(quickReply, displayText)
         }
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
@@ -106,10 +106,10 @@ class LlmFragment : Fragment() {
         binding.suggestionScroll.visibility = View.GONE
     }
 
-    private fun sendMessage(overrideText: String? = null) {
+    private fun sendMessage(overrideText: String? = null, displayText: String? = null) {
         val text = (overrideText ?: binding.editTextMessage.text.toString()).trim()
         if (text.isNotEmpty()) {
-            messages.add(LlmMessage(text, true))
+            messages.add(LlmMessage(displayText ?: text, true))
             adapter.notifyItemInserted(messages.size - 1)
             binding.recyclerView.scrollToPosition(messages.size - 1)
             if (overrideText == null) {
