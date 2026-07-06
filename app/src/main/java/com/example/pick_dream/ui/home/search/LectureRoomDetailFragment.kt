@@ -4,9 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageButton
-import android.widget.ImageView
-import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -14,8 +11,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
 import com.example.pick_dream.R
 import com.example.pick_dream.databinding.FragmentLectureRoomDetailBinding
-import com.google.android.material.button.MaterialButton
-import com.google.android.material.bottomnavigation.BottomNavigationView
 
 class LectureRoomDetailFragment : Fragment() {
     private val viewModel: LectureRoomDetailViewModel by viewModels()
@@ -49,12 +44,16 @@ class LectureRoomDetailFragment : Fragment() {
             }
 
             // 상세 정보 박스 채우기
+            val equipmentText = room.equipment.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "정보 없음"
+            val hasProjector = room.isProjectorAvailable || room.hasEquipment("빔프로젝터", "빔 프로젝터", "프로젝터")
+            val hasBlackboard = room.isBlackboardAvailable || room.hasEquipment("전자칠판", "전자 칠판")
+            val chairType = room.chairType.ifBlank { "정보 없음" }
+
             binding.infoBoxRoomName.text = "강의실 : ${room.name}"
-            binding.infoBoxEquipment.text = "기자재 목록 : ${room.equipment.joinToString(", ")}"
-            // TODO: 의자 종류, 빔 프로젝터, 전자칠판 여부는 Firestore 데이터 필드 추가 후 연동 필요
-            binding.infoBoxChairType.text = "의자 : 정보 없음"
-            binding.infoBoxProjector.text = "빔 프로젝터 대여 여부 : 정보 없음"
-            binding.infoBoxBlackboard.text = "전자 칠판 대여 여부 : 정보 없음"
+            binding.infoBoxEquipment.text = "기자재 목록 : $equipmentText"
+            binding.infoBoxChairType.text = "의자 : $chairType"
+            binding.infoBoxProjector.text = "빔 프로젝터 대여 여부 : ${availabilityText(hasProjector)}"
+            binding.infoBoxBlackboard.text = "전자 칠판 대여 여부 : ${availabilityText(hasBlackboard)}"
             binding.infoBoxRentalAvailability.text =
                 if (room.isRentalAvailable) "앱에서 바로 예약 가능" else "예약 불가"
 
@@ -114,5 +113,15 @@ class LectureRoomDetailFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    private fun com.example.pick_dream.model.LectureRoom.hasEquipment(vararg aliases: String): Boolean {
+        return equipment.any { item ->
+            aliases.any { alias -> item.replace(" ", "").contains(alias.replace(" ", ""), ignoreCase = true) }
+        }
+    }
+
+    private fun availabilityText(isAvailable: Boolean): String {
+        return if (isAvailable) "사용 가능" else "사용 불가"
     }
 }

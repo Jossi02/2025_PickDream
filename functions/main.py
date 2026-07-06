@@ -4,6 +4,7 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+import json
 import os
 import re
 import logging
@@ -54,9 +55,46 @@ CHAT_HISTORY_MAX_MESSAGES = 10
 CHAT_HISTORY_RETENTION_DAYS = 30
 
 
+def make_ai_response(text, status=200, query=None, title=None, cards=None):
+    if query and query.get("_structuredResponse"):
+        payload = {
+            "text": text,
+            "title": title or "",
+            "cards": cards or [],
+        }
+        return https_fn.Response(
+            json.dumps(payload, ensure_ascii=False),
+            status=status,
+            headers={"Content-Type": "application/json; charset=utf-8"},
+        )
+    return https_fn.Response(text, status=status)
+
+
+def ai_action(label, message, display_text=None):
+    return {
+        "label": label,
+        "message": message,
+        "displayText": display_text or label,
+    }
+
+
+def ai_card(card_type, room_name, description="", start_time="", end_time="", participants=None, actions=None):
+    return {
+        "type": card_type,
+        "roomName": room_name,
+        "description": description,
+        "startTime": start_time,
+        "endTime": end_time,
+        "participants": "" if participants is None else str(participants),
+        "actions": actions or [],
+    }
+
+
 def is_reservation_confirmation(text):
     normalized = re.sub(r"\s+", "", str(text or "")).lower()
     if not normalized:
+        return False
+    if "예약해" in normalized and "예약확정" not in normalized:
         return False
     robust_confirmation_words = (
         "\uc608\uc57d\ud655\uc815",
@@ -70,7 +108,6 @@ def is_reservation_confirmation(text):
         "\uc751",
         "\ub124",
         "\ub9de\uc544",
-        "\uc608\uc57d\ud574",
         "ok",
         "okay",
     )
@@ -229,6 +266,8 @@ def is_reservation_request_text(text):
     normalized = re.sub(r"\s+", "", str(text or "")).lower()
     if not normalized:
         return False
+    if is_recommendation_or_lookup_request(text):
+        return False
     return any(
         word in normalized
         for word in (
@@ -237,6 +276,29 @@ def is_reservation_request_text(text):
             "\ube4c\ub824",
             "\uc0ac\uc6a9",
             "\uc7a1\uc544",
+        )
+    )
+
+
+def is_recommendation_or_lookup_request(text):
+    normalized = re.sub(r"\s+", "", str(text or "")).lower()
+    if not normalized:
+        return False
+    return any(
+        phrase in normalized
+        for phrase in (
+            "\ucd94\ucc9c",
+            "\uc54c\ub824\uc918",
+            "\ucc3e\uc544\uc918",
+            "\ucc3e\uc544\uc918",
+            "\uc870\ud68c",
+            "\uc5b4\ub514\uc57c",
+            "\uc5b4\ub514\uc5d0",
+            "\uc788\ub294\uac15\uc758\uc2e4",
+            "\uc788\ub294\ubc29",
+            "\uc774\uc6a9\ud558\uae30\uc88b\uc740",
+            "\uc608\uc57d\uac00\ub2a5\ud55c",
+            "\uac00\ub2a5\ud55c\uac15\uc758\uc2e4",
         )
     )
 
@@ -273,6 +335,60 @@ def enrich_query_from_direct_parse(query, room_id=None, start=None, participants
     if duration is not None and not query.get("duration"):
         query["duration"] = duration
     return query
+
+
+def recover_reserve_fields_from_text(query, raw_text, now=None):
+    if not raw_text:
+        return query
+
+    now = now or datetime.now(KST)
+    if not query.get("room"):
+        room_id = extract_room_id(raw_text)
+        if room_id:
+            query["room"] = room_id
+
+    if not query.get("startTime"):
+        start = parse_natural_korean_datetime(raw_text, now)
+        if start:
+            query["startTime"] = start.isoformat()
+
+    if not query.get("eventParticipants"):
+        participants = parse_participant_count(raw_text)
+        if participants is not None:
+            query["eventParticipants"] = str(participants)
+
+    if not query.get("duration"):
+        duration = parse_duration_hours(raw_text)
+        if duration is not None:
+            query["duration"] = duration
+
+    return query
+
+
+def extract_recommendation_keywords(text):
+    raw = str(text or "")
+    normalized = re.sub(r"\s+", "", raw).lower()
+    keywords = []
+    equipment_aliases = {
+        "마이크": ("마이크", "mic", "microphone"),
+        "빔프로젝터": ("빔프로젝터", "프로젝터", "beam", "projector"),
+        "프로젝터": ("빔프로젝터", "프로젝터", "beam", "projector"),
+        "콘센트": ("콘센트", "전원", "전기"),
+        "스크린": ("스크린", "screen"),
+        "화이트보드": ("화이트보드", "보드", "칠판"),
+        "전자칠판": ("전자칠판", "전자칠판"),
+        "에어컨": ("에어컨", "냉방"),
+    }
+    for canonical, aliases in equipment_aliases.items():
+        if any(alias.lower() in normalized for alias in aliases):
+            if canonical not in keywords:
+                keywords.append(canonical)
+    if "\uc9c0\uae08" in normalized:
+        keywords.append("\uc9c0\uae08")
+    participant_count = parse_participant_count(raw)
+    if participant_count is not None:
+        keywords.append(f"{participant_count}\uba85")
+    return keywords
 
 
 def extract_room_ids(text):
@@ -527,7 +643,15 @@ def infer_pending_flow_type(pending_data):
 
 
 def can_confirm_pending(pending_data):
-    return infer_pending_flow_type(pending_data) in CONFIRMABLE_PENDING_FLOWS
+    pending_data = pending_data or {}
+    has_required_reservation_fields = all(
+        str(pending_data.get(field) or "").strip()
+        for field in ("room", "startTime", "duration", "eventParticipants")
+    )
+    return (
+        infer_pending_flow_type(pending_data) in CONFIRMABLE_PENDING_FLOWS
+        and has_required_reservation_fields
+    )
 
 
 def build_pending_reservation_data(
@@ -542,6 +666,7 @@ def build_pending_reservation_data(
     flow_type=FLOW_NEW_RESERVATION,
     replace_reservation_id=None,
     blocked_by_reservation_id=None,
+    blocked_by_own_reservation=False,
 ):
     data = {
         "room": room,
@@ -559,6 +684,7 @@ def build_pending_reservation_data(
         data["replaceReservationId"] = replace_reservation_id
     if blocked_by_reservation_id:
         data["blockedByReservationId"] = blocked_by_reservation_id
+        data["blockedByOwnReservation"] = bool(blocked_by_own_reservation)
     return data
 
 
@@ -572,6 +698,7 @@ def suggest_alternative_room_response(
     userID,
     exclude_room_ids=None,
     replace_reservation_id=None,
+    structured=False,
 ):
     numeric_part = re.search(r"\d+", str(event_participants or ""))
     person_count = int(numeric_part.group()) if numeric_part else 0
@@ -610,13 +737,27 @@ def suggest_alternative_room_response(
         if replace_reservation_id
         else "\uc774 \uac15\uc758\uc2e4\ub85c \uc608\uc57d"
     )
-    return https_fn.Response(
+    response_text = (
         f"{original_room_name}\uc740 \ud574\ub2f9 \uc2dc\uac04\uc5d0 \uc774\ubbf8 \uc608\uc57d\ub418\uc5b4 \uc788\uc5b4\uc694.\n\n"
         f"\ub300\uc2e0 {alt_room_name}\uc740 \uac19\uc740 \uc2dc\uac04\uc5d0 \uc608\uc57d \uac00\ub2a5\ud574\uc694.\n"
         f"\uc2dc\uac04: {format_korean_time(start)} ~ {format_korean_time(end)}\n"
         f"\uc778\uc6d0: {pending_data['eventParticipants']}\n\n"
-        f"{action_hint}\ud558\uc2dc\ub824\uba74 '\uc608\uc57d \ud655\uc815'\uc774\ub77c\uace0 \uc785\ub825\ud574 \uc8fc\uc138\uc694.",
-        status=200,
+        f"{action_hint}\ud558\uc2dc\ub824\uba74 '\uc608\uc57d \ud655\uc815'\uc774\ub77c\uace0 \uc785\ub825\ud574 \uc8fc\uc138\uc694."
+    )
+    return make_ai_response(
+        response_text,
+        query={"_structuredResponse": structured},
+        title="대체 강의실 제안",
+        cards=[
+            ai_card(
+                "alternative",
+                alt_room_name,
+                start_time=format_korean_time(start),
+                end_time=format_korean_time(end),
+                participants=pending_data["eventParticipants"],
+                actions=[ai_action("예약 확정", "예약확정", "예약확정")],
+            )
+        ],
     )
 
 def handle_query_equipment(query, userID):
@@ -693,7 +834,14 @@ def handle_reserve(query, userID):
     try:
         logging.info(f"[handle_reserve] input query: {query}")
         owner_uid = query.pop("ownerUid", "")
+        raw_user_input = (
+            query.pop("rawUserInput", "")
+            or query.pop("originalUserInput", "")
+            or query.pop("message", "")
+            or ""
+        )
         query["userID"] = userID
+        recover_reserve_fields_from_text(query, raw_user_input)
 
         room_raw = query.get("room")
         room_id, room_data = find_room(room_raw)
@@ -704,17 +852,37 @@ def handle_reserve(query, userID):
         if pending.exists:
             pending_data = pending.to_dict()
             if allow_alternative_room and pending_data.get("blockedByReservationId"):
+                blocked_by_own_reservation = bool(pending_data.get("blockedByOwnReservation"))
                 pending_room_id = pending_data.get("room")
                 _, pending_room_data = find_room(pending_room_id)
                 pending_room_name = display_room_label(pending_room_id, pending_room_data)
-                if not explicit_change_reservation:
-                    return https_fn.Response(
+                if blocked_by_own_reservation and not explicit_change_reservation:
+                    response_text = (
                         f"\uc774\ubbf8 {pending_room_name}\uc744(\ub97c) \ud574\ub2f9 \uc2dc\uac04\uc5d0 \uc608\uc57d\ud574\ub450\uc168\uc5b4\uc694.\n\n"
                         "\uc0c8 \uc608\uc57d\uc744 \ucd94\uac00\ub85c \ub9cc\ub4e4 \uc218\ub294 \uc5c6\uc5b4\uc694. "
                         "\ub2e4\ub978 \uc2dc\uac04\ub300\ub97c \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.\n"
                         "\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubc14\uafb8\ub824\uba74 "
-                        "'\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubcc0\uacbd\ud574\uc918'\ub77c\uace0 \uc785\ub825\ud574 \uc8fc\uc138\uc694.",
+                        "'\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubcc0\uacbd\ud574\uc918'\ub77c\uace0 \uc785\ub825\ud574 \uc8fc\uc138\uc694."
+                    )
+                    return make_ai_response(
+                        response_text,
                         status=409,
+                        query=query,
+                        title="예약 충돌 안내",
+                        cards=[
+                            ai_card(
+                                "own_conflict",
+                                pending_room_name,
+                                description="같은 시간대에 예약하신 기록이 있어요.",
+                                actions=[
+                                    ai_action(
+                                        "기존 예약 변경",
+                                        "기존 예약을 다른 강의실로 변경해줘",
+                                        "기존 예약 변경",
+                                    )
+                                ],
+                            )
+                        ],
                     )
                 try:
                     pending_start = datetime.fromisoformat(str(pending_data.get("startTime")))
@@ -731,7 +899,12 @@ def handle_reserve(query, userID):
                         owner_uid or pending_data.get("ownerUid", ""),
                         userID,
                         exclude_room_ids={pending_room_id},
-                        replace_reservation_id=pending_data.get("blockedByReservationId"),
+                        replace_reservation_id=(
+                            pending_data.get("blockedByReservationId")
+                            if blocked_by_own_reservation and explicit_change_reservation
+                            else None
+                        ),
+                        structured=query.get("_structuredResponse", False),
                     )
                 except Exception as e:
                     logging.warning("[handle_reserve] pending alternative suggestion failed: %s", e)
@@ -762,6 +935,8 @@ def handle_reserve(query, userID):
         query["eventTarget"] = query.get("eventTarget") or ""
         query["eventParticipants"] = normalize_event_participants(query)
         query["status"] = "대기"
+        recover_reserve_fields_from_text(query, raw_user_input)
+        query["eventParticipants"] = normalize_event_participants(query)
 
         has_room_and_time = bool(query.get("room")) and bool(query.get("startTime"))
         missing_participants_only = (
@@ -799,6 +974,7 @@ def handle_reserve(query, userID):
                             "eventTarget": query.get("eventTarget", ""),
                             "ownerUid": owner_uid,
                             "blockedByReservationId": user_conflict_id,
+                            "blockedByOwnReservation": True,
                             "flowType": FLOW_BLOCKED_EXISTING_RESERVATION,
                         },
                         merge=True,
@@ -834,6 +1010,19 @@ def handle_reserve(query, userID):
 
         missing_details = missing_required_fields(query, ("startTime", "duration", "eventParticipants"))
         if missing_details:
+            logging.warning(
+                "[handle_reserve] missing_details=%s raw=%r query=%s",
+                missing_details,
+                raw_user_input[:200],
+                {
+                    "room": query.get("room"),
+                    "startTime": query.get("startTime"),
+                    "duration": query.get("duration"),
+                    "eventParticipants": query.get("eventParticipants"),
+                    "needsConfirmation": query.get("needsConfirmation"),
+                    "flowType": query.get("flowType"),
+                },
+            )
             query["flowType"] = query.get("flowType") or FLOW_NEW_RESERVATION
             db.collection("PendingReservations").document(userID).set(query, merge=True)
             friendly_names = {
@@ -920,16 +1109,36 @@ def handle_reserve(query, userID):
                             owner_uid=owner_uid,
                             flow_type=FLOW_BLOCKED_EXISTING_RESERVATION,
                             blocked_by_reservation_id=user_conflict_id,
+                            blocked_by_own_reservation=True,
                         ),
                         merge=True,
                     )
-                    return https_fn.Response(
+                    response_text = (
                         f"\uc774\ubbf8 {conflict_room_name}\uc744(\ub97c) \ud574\ub2f9 \uc2dc\uac04\uc5d0 \uc608\uc57d\ud574\ub450\uc168\uc5b4\uc694.\n\n"
                         "\uc0c8 \uc608\uc57d\uc744 \ucd94\uac00\ub85c \ub9cc\ub4e4 \uc218\ub294 \uc5c6\uc5b4\uc694. "
                         "\ub2e4\ub978 \uc2dc\uac04\ub300\ub97c \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.\n"
                         "\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubc14\uafb8\ub824\uba74 "
-                        "'\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubcc0\uacbd\ud574\uc918'\ub77c\uace0 \uc785\ub825\ud574 \uc8fc\uc138\uc694.",
+                        "'\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubcc0\uacbd\ud574\uc918'\ub77c\uace0 \uc785\ub825\ud574 \uc8fc\uc138\uc694."
+                    )
+                    return make_ai_response(
+                        response_text,
                         status=409,
+                        query=query,
+                        title="예약 충돌 안내",
+                        cards=[
+                            ai_card(
+                                "own_conflict",
+                                conflict_room_name,
+                                description="같은 시간대에 예약하신 기록이 있어요.",
+                                actions=[
+                                    ai_action(
+                                        "기존 예약 변경",
+                                        "기존 예약을 다른 강의실로 변경해줘",
+                                        "기존 예약 변경",
+                                    )
+                                ],
+                            )
+                        ],
                     )
                 return suggest_alternative_room_response(
                     conflict_room_name,
@@ -940,7 +1149,10 @@ def handle_reserve(query, userID):
                     owner_uid,
                     userID,
                     exclude_room_ids={conflict_room_id},
-                    replace_reservation_id=user_conflict_id,
+                    replace_reservation_id=(
+                        user_conflict_id if explicit_change_reservation else None
+                    ),
+                    structured=query.get("_structuredResponse", False),
                 )
             db.collection("PendingReservations").document(userID).set(
                 {
@@ -953,26 +1165,97 @@ def handle_reserve(query, userID):
                     "eventParticipants": str(query.get("eventParticipants", "")).strip(),
                     "ownerUid": owner_uid,
                     "blockedByReservationId": user_conflict_id,
+                    "blockedByOwnReservation": True,
                     "flowType": FLOW_BLOCKED_EXISTING_RESERVATION,
                 },
                 merge=True,
             )
-            return https_fn.Response(
+            response_text = (
                 f"\uc774\ubbf8 {conflict_room_name}\uc744(\ub97c) \ud574\ub2f9 \uc2dc\uac04\uc5d0 \uc608\uc57d\ud574\ub450\uc168\uc5b4\uc694. "
                 "\uc0c8 \uc608\uc57d\uc744 \ub9cc\ub4e4\ub824\uba74 \ub2e4\ub978 \uc2dc\uac04\ub300\ub97c \uc120\ud0dd\ud574 \uc8fc\uc138\uc694. "
-                "\uae30\uc874 \uc608\uc57d\uc744 \ubc14\uafb8\ub824\ub294 \ubaa9\uc801\uc774\ub77c\uba74 '\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubcc0\uacbd\ud574\uc918'\ub77c\uace0 \ub9d0\ud574 \uc8fc\uc138\uc694.",
+                "\uae30\uc874 \uc608\uc57d\uc744 \ubc14\uafb8\ub824\ub294 \ubaa9\uc801\uc774\ub77c\uba74 '\uae30\uc874 \uc608\uc57d\uc744 \ub2e4\ub978 \uac15\uc758\uc2e4\ub85c \ubcc0\uacbd\ud574\uc918'\ub77c\uace0 \ub9d0\ud574 \uc8fc\uc138\uc694."
+            )
+            return make_ai_response(
+                response_text,
                 status=409,
+                query=query,
+                title="예약 충돌 안내",
+                cards=[
+                    ai_card(
+                        "own_conflict",
+                        conflict_room_name,
+                        description="같은 시간대에 예약하신 기록이 있어요.",
+                        actions=[
+                            ai_action(
+                                "기존 예약 변경",
+                                "기존 예약을 다른 강의실로 변경해줘",
+                                "기존 예약 변경",
+                            )
+                        ],
+                    )
+                ],
             )
 
         _, room_data = find_room(query["room"])
         if has_conflict("roomID", query["room"], start, end):
             room_name = display_room_label(query["room"], room_data)
-            replace_room_conflict_id, _ = find_conflicting_reservation(
+            replace_room_conflict_id, replace_room_conflict_data = find_conflicting_reservation(
                 "userID",
                 userID,
                 start,
                 end,
             )
+            if replace_room_conflict_id and not explicit_change_reservation:
+                existing_room_id = (
+                    replace_room_conflict_data.get("roomID")
+                    or replace_room_conflict_data.get("room")
+                    or ""
+                )
+                _, existing_room_data = find_room(existing_room_id)
+                existing_room_name = display_room_label(existing_room_id, existing_room_data)
+                db.collection("PendingReservations").document(userID).set(
+                    build_pending_reservation_data(
+                        room=existing_room_id,
+                        start=start,
+                        duration=query["duration"],
+                        event_participants=query.get("eventParticipants"),
+                        event_name=query.get("eventName"),
+                        event_description=query.get("eventDescription", ""),
+                        event_target=query.get("eventTarget", ""),
+                        owner_uid=owner_uid,
+                        flow_type=FLOW_BLOCKED_EXISTING_RESERVATION,
+                        blocked_by_reservation_id=replace_room_conflict_id,
+                        blocked_by_own_reservation=True,
+                    ),
+                    merge=True,
+                )
+                response_text = (
+                    f"{room_name}은 해당 시간에 이미 예약되어 있어요.\n\n"
+                    f"그리고 같은 시간대에 이미 {existing_room_name}을(를) 예약해두셔서 "
+                    "새 예약을 추가로 만들 수는 없어요. "
+                    "다른 시간대를 선택해 주세요.\n"
+                    "기존 예약을 다른 강의실로 바꾸려면 '기존 예약을 다른 강의실로 변경해줘'라고 입력해 주세요."
+                )
+                return make_ai_response(
+                    response_text,
+                    status=409,
+                    query=query,
+                    title="예약 충돌 안내",
+                    cards=[
+                        ai_card(
+                            "own_conflict",
+                            room_name,
+                            description="같은 시간대에 예약하신 기록이 있어요.",
+                            actions=[
+                                ai_action(
+                                    "기존 예약 변경",
+                                    "기존 예약을 다른 강의실로 변경해줘",
+                                    "기존 예약 변경",
+                                )
+                            ],
+                        )
+                    ],
+                )
             return suggest_alternative_room_response(
                 room_name,
                 start,
@@ -982,7 +1265,10 @@ def handle_reserve(query, userID):
                 owner_uid,
                 userID,
                 exclude_room_ids={query["room"]},
-                replace_reservation_id=replace_room_conflict_id,
+                replace_reservation_id=(
+                    replace_room_conflict_id if explicit_change_reservation else None
+                ),
+                structured=query.get("_structuredResponse", False),
             )
 
         room_name = display_room_label(query["room"], room_data)
@@ -1002,13 +1288,27 @@ def handle_reserve(query, userID):
                 pending_data["replaceReservationId"] = query["replaceReservationId"]
                 pending_data["flowType"] = FLOW_CHANGE_EXISTING_RESERVATION
             db.collection("PendingReservations").document(userID).set(pending_data, merge=True)
-            return https_fn.Response(
+            response_text = (
                 "예약 내용을 확인해 주세요 😊\n\n"
                 f"강의실: {room_name}\n"
                 f"시간: {format_korean_time(start)} ~ {format_korean_time(end)}\n"
                 f"인원: {pending_data['eventParticipants']}\n\n"
-                "맞다면 '예약 확정'이라고 입력해 주세요.",
-                status=200,
+                "맞다면 '예약 확정'이라고 입력해 주세요."
+            )
+            return make_ai_response(
+                response_text,
+                query=query,
+                title="예약 내용을 확인해 주세요",
+                cards=[
+                    ai_card(
+                        "confirmation",
+                        room_name,
+                        start_time=format_korean_time(start),
+                        end_time=format_korean_time(end),
+                        participants=pending_data["eventParticipants"],
+                        actions=[ai_action("예약 확정", "예약확정", "예약확정")],
+                    )
+                ],
             )
 
         try:
@@ -1055,6 +1355,7 @@ def handle_confirm_reservation(query, userID):
             status=409,
         )
     pending_data["ownerUid"] = query.get("ownerUid", pending_data.get("ownerUid", ""))
+    pending_data["_structuredResponse"] = bool(query.get("_structuredResponse"))
     pending_data["confirmed"] = True
     pending_data.pop("needsConfirmation", None)
     return handle_reserve(pending_data, userID)
@@ -1371,24 +1672,26 @@ def handle_recommend_room(query, userID):
     if avg is not None:
         response += f"\n⭐ 평균 평점: {avg}점\n📊 긍정 {pos_rate}%, 부정 {neg_rate}%"
         
-    response += "\n\n이 강의실로 예약하시겠어요?"
-
     if after_time_str:
-        pending_start_time = base_time.astimezone(KST).isoformat()
-    else:
-        pending_start_time = (base_time + timedelta(minutes=10)).astimezone(KST).isoformat()
+        response += "\n\n이 강의실로 예약하려면 '예약해줘'처럼 다시 말씀해 주세요."
 
-    pending_data = {
-        "room": room_id,
-        "startTime": pending_start_time,
-        "duration": duration,
-        "flowType": FLOW_NEW_RESERVATION,
-        "eventName": query.get("eventName", "추천 예약")
-    }
-    if person_count is not None:
-        pending_data["eventParticipants"] = f"{person_count}명"
+    if query.get("createPending"):
+        if after_time_str:
+            pending_start_time = base_time.astimezone(KST).isoformat()
+        else:
+            pending_start_time = (base_time + timedelta(minutes=10)).astimezone(KST).isoformat()
 
-    db.collection("PendingReservations").document(userID).set(pending_data, merge=True)
+        pending_data = {
+            "room": room_id,
+            "startTime": pending_start_time,
+            "duration": duration,
+            "flowType": FLOW_NEW_RESERVATION,
+            "eventName": query.get("eventName", "추천 예약")
+        }
+        if person_count is not None:
+            pending_data["eventParticipants"] = f"{person_count}명"
+
+        db.collection("PendingReservations").document(userID).set(pending_data, merge=True)
 
     return https_fn.Response(response, status=200)
 
@@ -1413,10 +1716,14 @@ def handle_list_rooms_by_equipment(query, userID):
     if not item:
         return https_fn.Response("기자재를 입력해 주세요. 예: '마이크'", status=400)
     docs = db.collection("rooms").where("equipment", "array_contains", item).stream()
-    room_ids = [doc.id for doc in docs]
-    if not room_ids:
+    room_names = []
+    for doc in docs:
+        data = doc.to_dict()
+        room_id = reservation_room_id(doc.id, data)
+        room_names.append(display_room_label(room_id, data))
+    if not room_names:
         return https_fn.Response(f"'{item}'이(가) 있는 강의실이 없어요.", status=200)
-    return https_fn.Response(f"'{item}'이(가) 있는 강의실: {', '.join(room_ids)}", status=200)
+    return https_fn.Response(f"'{item}'이(가) 있는 강의실: {', '.join(room_names)}", status=200)
 
 def handle_room_availability(query, userID):
     room_id, room_data = find_room(query.get("room"))
@@ -1487,6 +1794,7 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
         if not isinstance(data, dict):
             return https_fn.Response("JSON 요청 본문이 필요합니다.", status=400)
         user_input = str(data.get("message", "")).strip()
+        supports_structured_response = bool(data.get("supportsStructuredResponse"))
         if not user_input:
             return https_fn.Response("메시지를 입력해 주세요.", status=400)
         if len(user_input) > 2000:
@@ -1617,7 +1925,10 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
             )
 
         if confirms_pending:
-            res = handle_confirm_reservation({"ownerUid": uid}, userID)
+            res = handle_confirm_reservation(
+                {"ownerUid": uid, "_structuredResponse": supports_structured_response},
+                userID,
+            )
             bot_text = res.data.decode("utf-8") if hasattr(res, "data") else str(res)
             return _store_direct_response(bot_text, getattr(res, "status_code", 200))
 
@@ -1661,6 +1972,7 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
                 userID,
                 exclude_room_ids={existing_room_id},
                 replace_reservation_id=res_id,
+                structured=supports_structured_response,
             )
             bot_text = res.data.decode("utf-8") if hasattr(res, "data") else str(res)
             return _store_direct_response(bot_text, getattr(res, "status_code", 200))
@@ -1693,9 +2005,36 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
             bot_text = res.data.decode("utf-8") if hasattr(res, "data") else str(res)
             return _store_direct_response(bot_text, getattr(res, "status_code", 200))
 
+        if (
+            is_recommendation_or_lookup_request(user_input)
+            and not wants_new_reservation
+            and not wants_change_reservation
+            and not wants_cancel_reservation
+            and not direct_room_id
+        ):
+            recommendation_query = {
+                "ownerUid": uid,
+                "keywords": extract_recommendation_keywords(user_input),
+                "_structuredResponse": supports_structured_response,
+            }
+            if direct_start:
+                recommendation_query["afterTime"] = direct_start.isoformat()
+                recommendation_query["startTime"] = direct_start.isoformat()
+            if direct_duration is not None:
+                recommendation_query["duration"] = direct_duration
+            if direct_participants is not None:
+                recommendation_query["eventParticipants"] = str(direct_participants)
+            res = handle_recommend_room(recommendation_query, userID)
+            bot_text = res.data.decode("utf-8") if hasattr(res, "data") else str(res)
+            return _store_direct_response(bot_text, getattr(res, "status_code", 200))
+
         should_handle_reservation_directly = (
             wants_alternative_room
-            or (pending_doc_for_guard.exists and direct_participants is not None)
+            or (
+                pending_doc_for_guard.exists
+                and direct_participants is not None
+                and is_reservation_request_text(user_input)
+            )
             or (is_reservation_request_text(user_input) and (direct_start or direct_room_id))
             or (direct_start and direct_room_id)
             or (wants_new_reservation and (direct_start or direct_room_id or direct_participants is not None))
@@ -1703,7 +2042,12 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
         if should_handle_reservation_directly:
             if wants_new_reservation:
                 pending_ref.delete()
-            direct_query = {"ownerUid": uid, "needsConfirmation": True}
+            direct_query = {
+                "ownerUid": uid,
+                "needsConfirmation": True,
+                "rawUserInput": user_input,
+                "_structuredResponse": supports_structured_response,
+            }
             enrich_query_from_direct_parse(
                 direct_query,
                 room_id=direct_room_id,
@@ -1747,7 +2091,7 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
         ]
 
         now_kst = datetime.now(KST)
-        system_prompt = f"""당신은 세종대학교 대양AI센터의 강의실 예약 및 안내를 돕는 AI 비서 '세종이'입니다.
+        system_prompt = f"""당신은 PickDream의 강의실 예약 및 안내를 돕는 AI 비서입니다.
 항상 존댓말을 사용하고 이모지(😊)를 적절히 사용해 친절하게 응답하세요.
 
 오늘 날짜와 현재 시간은 {now_kst.strftime('%Y-%m-%d %H:%M:%S KST')}입니다.
@@ -1760,6 +2104,7 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
 - 첫 예약 요청에서는 예약 내용을 먼저 확인받아야 합니다. 서버가 확인 메시지를 반환하면 사용자에게 그대로 안내하세요.
 - 사용자가 "예약 확정", "네", "그걸로", "진행해"처럼 방금 제안된 예약을 명시적으로 승인하면 confirm_reservation 도구를 호출하세요.
 - 사용자가 "알아서 예약해줘", "빈 방 예약해줘" 등 강의실 이름을 명시하지 않고 예약을 원하면 직접 되묻지 말고, **'reserve' 도구의 'room' 파라미터를 생략**하여 서버가 빈 강의실을 찾아 예약 내용을 먼저 제안하도록 하세요.
+- 특정 학교명, 기관명, AI 비서 이름은 사용자가 직접 말하지 않는 한 임의로 언급하지 마세요.
 - 절대 임의의 강의실이나 시간을 지어내지 마세요.
 """
 
@@ -1796,7 +2141,11 @@ def ai_assistant(req: https_fn.Request) -> https_fn.Response:
             if action == "get_facility_rules":
                 bot_text = f"알려드릴게요! 🧐\n\n{FAQ_RULES}\n\n도움이 더 필요하신가요? 😊"
             else:
-                query = {"action": action}
+                query = {
+                    "action": action,
+                    "rawUserInput": user_input,
+                    "_structuredResponse": supports_structured_response,
+                }
                 for k, v in fc.args.items():
                     query[k] = v
                 query["ownerUid"] = uid

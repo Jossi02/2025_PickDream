@@ -25,7 +25,6 @@
         android:layout_height="wrap_content"
         android:hint="학번"
         app:startIconDrawable="@drawable/ic_person_outline">
-        <!-- TODO: @drawable/ic_person_outline을 실제 아이콘 리소스로 교체 필요 (예: Material Icons에서 person 검색) -->
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/editTextId"
@@ -45,7 +44,6 @@
         app:passwordToggleEnabled="true"
         app:startIconDrawable="@drawable/ic_lock_outline"
         android:layout_marginTop="16dp">
-        <!-- TODO: @drawable/ic_lock_outline을 실제 아이콘 리소스로 교체 필요 (예: Material Icons에서 lock 검색) -->
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/editTextPassword"

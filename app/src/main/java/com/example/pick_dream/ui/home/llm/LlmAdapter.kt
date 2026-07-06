@@ -50,11 +50,15 @@ class LlmAdapter(
             holder.binding.layoutRoot.gravity = Gravity.START
             holder.binding.imageBotIcon.visibility = android.view.View.VISIBLE
 
-            val reservations = parseReservationCards(message.text)
+            val reservations = if (message.cards.isNotEmpty()) {
+                message.cards.map { it.toReservationCard() }
+            } else {
+                parseReservationCards(message.text)
+            }
             if (reservations.isNotEmpty()) {
                 holder.binding.textMessage.visibility = View.GONE
                 holder.binding.reservationCardsContainer.visibility = View.VISIBLE
-                val headerText = reservationHeaderText(message.text)
+                val headerText = message.title?.takeIf { it.isNotBlank() } ?: reservationHeaderText(message.text)
                 addReservationHeader(context, holder.binding.reservationCardsContainer, headerText)
                 reservations.forEach { reservation ->
                     holder.binding.reservationCardsContainer.addView(createReservationCard(context, reservation))
@@ -91,6 +95,19 @@ class LlmAdapter(
         val actionMessage: String? = null,
         val actionDisplayText: String? = null
     )
+
+    private fun LlmCard.toReservationCard(): ReservationCard {
+        val action = actions.firstOrNull()
+        return ReservationCard(
+            roomName = roomName,
+            startTime = description.ifBlank { startTime },
+            endTime = if (description.isBlank()) endTime else "",
+            participants = participants?.takeIf { it.isNotBlank() },
+            actionLabel = action?.label,
+            actionMessage = action?.message,
+            actionDisplayText = action?.displayText
+        )
+    }
 
     private fun parseReservationCards(text: String): List<ReservationCard> {
         val isReservationList = text.startsWith("현재 예약 및 예정된 예약:")
@@ -190,6 +207,13 @@ class LlmAdapter(
     private fun parseConflictCard(text: String): ReservationCard? {
         if (!("이미" in text && "해당 시간" in text && "예약" in text)) return null
 
+        val isOwnReservationConflict =
+            "새 예약을 추가로 만들 수는 없어요" in text ||
+                "새 예약을 추가로 만들 수 없어요" in text ||
+                "같은 시간대에 이미" in text ||
+                "예약해두셔서" in text ||
+                "예약해두셨어요" in text
+
         val roomName = Regex("""이미\s+(.+?)을\(를\)\s+해당\s+시간""")
             .find(text)
             ?.groupValues
@@ -200,16 +224,29 @@ class LlmAdapter(
                 ?.groupValues
                 ?.getOrNull(1)
                 ?.trim()
+            ?: Regex("""^(.+?)은\s+해당\s+시간""", RegexOption.MULTILINE)
+                .find(text)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.trim()
             ?: return null
 
         return ReservationCard(
             roomName = roomName,
-            startTime = "해당 시간에 이미 예약되어 있어요.",
+            startTime = if (isOwnReservationConflict) {
+                "같은 시간대에 예약하신 기록이 있어요."
+            } else {
+                "해당 시간에 이미 예약되어 있어요."
+            },
             endTime = "",
             participants = null,
-            actionLabel = "다른 강의실 찾기",
-            actionMessage = "기존 예약을 다른 강의실로 변경해줘",
-            actionDisplayText = "다른 강의실 찾기"
+            actionLabel = if (isOwnReservationConflict) "기존 예약 변경" else "다른 강의실 찾기",
+            actionMessage = if (isOwnReservationConflict) {
+                "기존 예약을 다른 강의실로 변경해줘"
+            } else {
+                "다른 강의실 찾아줘"
+            },
+            actionDisplayText = if (isOwnReservationConflict) "기존 예약 변경" else "다른 강의실 찾기"
         )
     }
 
@@ -274,11 +311,22 @@ class LlmAdapter(
                 "예약확정" !in normalized
 
         if (suggestsAlternative) {
+            val isOwnReservationConflict =
+                "새예약을추가로만들수는없어요" in normalized ||
+                    "새예약을추가로만들수없어요" in normalized ||
+                    "같은시간대에이미" in normalized ||
+                    "예약해두셔서" in normalized ||
+                    "예약해두셨어요" in normalized
+
             actions.add(
                 QuickAction(
-                    label = "다른 강의실 찾기",
-                    message = "기존 예약을 다른 강의실로 변경해줘",
-                    displayText = "다른 강의실 찾기"
+                    label = if (isOwnReservationConflict) "기존 예약 변경" else "다른 강의실 찾기",
+                    message = if (isOwnReservationConflict) {
+                        "기존 예약을 다른 강의실로 변경해줘"
+                    } else {
+                        "다른 강의실 찾아줘"
+                    },
+                    displayText = if (isOwnReservationConflict) "기존 예약 변경" else "다른 강의실 찾기"
                 )
             )
         }

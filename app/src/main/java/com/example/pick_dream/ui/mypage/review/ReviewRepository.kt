@@ -1,6 +1,7 @@
 package com.example.pick_dream.ui.mypage.review
 
 import com.example.pick_dream.model.Review
+import com.example.pick_dream.repository.UserRepository
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
@@ -42,7 +43,8 @@ object ReviewRepository {
      */
     suspend fun addReview(review: Review): Boolean {
         return try {
-            db.collection("Reviews").add(review).await()
+            val ownerUid = UserRepository.getCurrentUid() ?: return false
+            db.collection("Reviews").add(review.copy(ownerUid = ownerUid)).await()
             true
         } catch (e: Exception) {
             false

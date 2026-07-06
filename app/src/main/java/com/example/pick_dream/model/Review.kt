@@ -4,6 +4,7 @@ import com.google.firebase.firestore.ServerTimestamp
 import java.util.Date
 
 data class Review(
+    val ownerUid: String = "",
     val userID: String = "",
     val roomID: String = "",
     val rating: Float = 0.0f,

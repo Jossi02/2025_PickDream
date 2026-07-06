@@ -27,7 +27,10 @@ object FirebaseFunctionService {
         onSuccess: (String) -> Unit,
         onFailure: (Exception) -> Unit
     ) {
-        val json = JSONObject().apply { put("message", message) }
+        val json = JSONObject().apply {
+            put("message", message)
+            put("supportsStructuredResponse", true)
+        }
         val body = json.toString().toRequestBody("application/json".toMediaType())
 
         val request = Request.Builder()

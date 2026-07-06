@@ -18,6 +18,7 @@ import com.example.pick_dream.repository.UserRepository
 import com.example.pick_dream.ui.home.reservation.ReservationRepository
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 class LlmFragment : Fragment() {
     private var _binding: FragmentLlmBinding? = null
@@ -129,10 +130,11 @@ class LlmFragment : Fragment() {
                     idToken = idToken,
                     onSuccess = { reply ->
                         requireActivity().runOnUiThread {
-                            messages.add(LlmMessage(reply, false))
+                            val botMessage = parseBotMessage(reply)
+                            messages.add(botMessage)
                             adapter.notifyItemInserted(messages.size - 1)
                             binding.recyclerView.scrollToPosition(messages.size - 1)
-                            handleNotificationSideEffects(reply)
+                            handleNotificationSideEffects(botMessage.text)
                         }
                     },
                     onFailure = { e ->
@@ -146,6 +148,58 @@ class LlmFragment : Fragment() {
                 messages.add(LlmMessage("로그인이 필요합니다.", false))
                 adapter.notifyItemInserted(messages.size - 1)
             }
+        }
+    }
+
+    private fun parseBotMessage(raw: String): LlmMessage {
+        return runCatching {
+            val json = JSONObject(raw)
+            val text = json.optString("text", raw)
+            val title = json.optString("title").takeIf { it.isNotBlank() }
+            val cardsJson = json.optJSONArray("cards")
+            val cards = mutableListOf<LlmCard>()
+
+            if (cardsJson != null) {
+                for (i in 0 until cardsJson.length()) {
+                    val cardJson = cardsJson.optJSONObject(i) ?: continue
+                    val actionsJson = cardJson.optJSONArray("actions")
+                    val actions = mutableListOf<LlmAction>()
+
+                    if (actionsJson != null) {
+                        for (j in 0 until actionsJson.length()) {
+                            val actionJson = actionsJson.optJSONObject(j) ?: continue
+                            val label = actionJson.optString("label")
+                            val message = actionJson.optString("message")
+                            if (label.isBlank() || message.isBlank()) continue
+                            actions.add(
+                                LlmAction(
+                                    label = label,
+                                    message = message,
+                                    displayText = actionJson.optString("displayText", label)
+                                )
+                            )
+                        }
+                    }
+
+                    val roomName = cardJson.optString("roomName")
+                    if (roomName.isBlank()) continue
+                    cards.add(
+                        LlmCard(
+                            type = cardJson.optString("type"),
+                            roomName = roomName,
+                            description = cardJson.optString("description"),
+                            startTime = cardJson.optString("startTime"),
+                            endTime = cardJson.optString("endTime"),
+                            participants = cardJson.optString("participants").takeIf { it.isNotBlank() },
+                            actions = actions
+                        )
+                    )
+                }
+            }
+
+            LlmMessage(text = text, isUser = false, title = title, cards = cards)
+        }.getOrElse {
+            LlmMessage(raw, false)
         }
     }
 
