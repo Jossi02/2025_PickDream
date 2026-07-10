@@ -24,6 +24,7 @@ class AiIntentTest(unittest.TestCase):
         self.assertTrue(main.is_change_reservation_request("12\uc2dc\ub85c \ubcc0\uacbd\ud574\uc918"))
         self.assertTrue(main.is_change_reservation_request("5101 \uac15\uc758\uc2e4\ub85c \ubc14\uafd4\uc918"))
         self.assertTrue(main.is_change_reservation_request("\uc778\uc6d0 6\uba85\uc73c\ub85c \ubc14\uafd4\uc918"))
+        self.assertTrue(main.is_change_reservation_request("\uc608\uc57d \uc778\uc6d0 \uc218\ub97c \ubcc0\uacbd\ud558\uace0 \uc2f6\uc5b4"))
         self.assertFalse(main.is_change_reservation_request("\uc608\uc57d \ucde8\uc18c\ud574\uc918"))
 
     def test_explicit_change_reservation_patterns(self):

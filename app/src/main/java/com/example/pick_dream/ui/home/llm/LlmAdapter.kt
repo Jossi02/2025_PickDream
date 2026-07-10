@@ -98,10 +98,11 @@ class LlmAdapter(
 
     private fun LlmCard.toReservationCard(): ReservationCard {
         val action = actions.firstOrNull()
+        val displayStartTime = description.ifBlank { startTime }
         return ReservationCard(
             roomName = roomName,
-            startTime = description.ifBlank { startTime },
-            endTime = if (description.isBlank()) endTime else "",
+            startTime = simplifyKoreanDateTime(displayStartTime),
+            endTime = if (description.isBlank()) simplifyKoreanDateTime(endTime) else "",
             participants = participants?.takeIf { it.isNotBlank() },
             actionLabel = action?.label,
             actionMessage = action?.message,
@@ -268,9 +269,8 @@ class LlmAdapter(
 
     private fun simplifyKoreanDateTime(value: String): String {
         return value
-            .replace(" 0초 UTC+9", "")
-            .replace(" UTC+9", "")
-            .replace(" 0분", " 0분")
+            .replace(Regex("\\s+\\d+초\\s+UTC\\+9"), "")
+            .replace(Regex("\\s+UTC\\+9"), "")
             .trim()
     }
 
