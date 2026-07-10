@@ -2,11 +2,27 @@ from datetime import datetime, timedelta
 
 from firebase_admin import firestore
 
+from ai_response import extract_ai_response_text, parse_ai_payload
 from reservation_utils import KST
 
 
 CHAT_HISTORY_MAX_MESSAGES = 10
 CHAT_HISTORY_RETENTION_DAYS = 30
+
+
+def normalize_stored_messages(messages):
+    normalized = []
+    for message in messages or []:
+        if not isinstance(message, dict):
+            continue
+        normalized_message = dict(message)
+        if normalized_message.get("role") == "model" and normalized_message.get("text"):
+            legacy_payload = parse_ai_payload(normalized_message["text"])
+            normalized_message["text"] = extract_ai_response_text(normalized_message["text"])
+            if legacy_payload is not None and not normalized_message.get("response"):
+                normalized_message["response"] = legacy_payload
+        normalized.append(normalized_message)
+    return normalized
 
 
 def load_chat_history(db, user_id):
@@ -16,22 +32,35 @@ def load_chat_history(db, user_id):
     if history_doc.exists:
         messages = history_doc.to_dict().get("messages", [])
         if isinstance(messages, list):
-            stored_messages = messages[-CHAT_HISTORY_MAX_MESSAGES:]
+            stored_messages = normalize_stored_messages(messages[-CHAT_HISTORY_MAX_MESSAGES:])
 
     chat_history = []
     for msg in stored_messages:
         if isinstance(msg, dict) and msg.get("role") in {"user", "model"} and msg.get("text"):
-            chat_history.append({"role": msg["role"], "parts": [{"text": str(msg["text"])}]})
+            message_text = (
+                extract_ai_response_text(msg["text"])
+                if msg["role"] == "model"
+                else str(msg["text"])
+            )
+            chat_history.append({"role": msg["role"], "parts": [{"text": message_text}]})
 
     return history_ref, stored_messages, chat_history
 
 
 def build_updated_messages(stored_messages, user_text, model_text):
+    model_message = {
+        "role": "model",
+        "text": extract_ai_response_text(model_text),
+    }
+    structured_payload = parse_ai_payload(model_text)
+    if structured_payload is not None:
+        model_message["response"] = structured_payload
+
     return (
-        stored_messages
+        normalize_stored_messages(stored_messages)
         + [
             {"role": "user", "text": user_text},
-            {"role": "model", "text": model_text},
+            model_message,
         ]
     )[-CHAT_HISTORY_MAX_MESSAGES:]
 

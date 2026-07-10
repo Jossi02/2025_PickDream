@@ -3,13 +3,50 @@ import json
 from firebase_functions import https_fn
 
 
+AI_RESPONSE_SCHEMA_VERSION = 1
+AI_RESPONSE_KIND = "assistant_response"
+
+
+def build_ai_payload(text, title=None, cards=None):
+    return {
+        "schemaVersion": AI_RESPONSE_SCHEMA_VERSION,
+        "kind": AI_RESPONSE_KIND,
+        "text": str(text or ""),
+        "title": str(title or ""),
+        "cards": list(cards or []),
+    }
+
+
+def parse_ai_payload(value):
+    if isinstance(value, dict):
+        payload = value
+    else:
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", errors="replace")
+        if not isinstance(value, str) or not value.lstrip().startswith("{"):
+            return None
+        try:
+            payload = json.loads(value)
+        except (TypeError, ValueError):
+            return None
+
+    if not isinstance(payload, dict) or not isinstance(payload.get("text"), str):
+        return None
+    return payload
+
+
+def extract_ai_response_text(value):
+    payload = parse_ai_payload(value)
+    if payload is not None:
+        return payload["text"]
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value or "")
+
+
 def make_ai_response(text, status=200, query=None, title=None, cards=None):
     if query and query.get("_structuredResponse"):
-        payload = {
-            "text": text,
-            "title": title or "",
-            "cards": cards or [],
-        }
+        payload = build_ai_payload(text, title=title, cards=cards)
         return https_fn.Response(
             json.dumps(payload, ensure_ascii=False),
             status=status,

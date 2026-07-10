@@ -639,7 +639,14 @@ def handle_reserve(query, userID):
             readable = ", ".join(friendly_names.get(f, f) for f in missing)
             return https_fn.Response(f"다음 정보가 필요해요: {readable}", status=400)
 
-        replace_reservation_id = query.get("replaceReservationId")
+        pending_flow_type = infer_pending_flow_type(query)
+        if pending_flow_type == FLOW_CHANGE_EXISTING_RESERVATION:
+            replace_reservation_id = query.get("replaceReservationId")
+        else:
+            # A fresh reservation must never inherit a replacement target from
+            # an older pending change flow.
+            query.pop("replaceReservationId", None)
+            replace_reservation_id = None
         user_conflict_id, user_conflict_data = find_conflicting_reservation(
             "userID",
             userID,
@@ -843,7 +850,9 @@ def handle_reserve(query, userID):
             if query.get("replaceReservationId"):
                 pending_data["replaceReservationId"] = query["replaceReservationId"]
                 pending_data["flowType"] = FLOW_CHANGE_EXISTING_RESERVATION
-            db.collection("PendingReservations").document(userID).set(pending_data, merge=True)
+            # This is a complete confirmation proposal. Replacing the pending
+            # document prevents stale change/conflict metadata from surviving.
+            db.collection("PendingReservations").document(userID).set(pending_data)
             response_text = (
                 "예약 내용을 확인해 주세요 😊\n\n"
                 f"강의실: {room_name}\n"
@@ -914,6 +923,22 @@ def handle_confirm_reservation(query, userID):
     pending_data["_structuredResponse"] = bool(query.get("_structuredResponse"))
     pending_data["confirmed"] = True
     pending_data.pop("needsConfirmation", None)
+    flow_type = infer_pending_flow_type(pending_data)
+    if flow_type != FLOW_CHANGE_EXISTING_RESERVATION:
+        pending_data.pop("replaceReservationId", None)
+    else:
+        replace_reservation_id = str(pending_data.get("replaceReservationId") or "").strip()
+        replacement_target = (
+            db.collection("Reservations").document(replace_reservation_id).get()
+            if replace_reservation_id
+            else None
+        )
+        if not replacement_target or not replacement_target.exists:
+            pending_ref.delete()
+            return https_fn.Response(
+                "변경할 기존 예약을 찾을 수 없어요. 예약 내역을 다시 확인해 주세요.",
+                status=409,
+            )
     return handle_reserve(pending_data, userID)
 
 

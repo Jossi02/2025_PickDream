@@ -191,6 +191,72 @@ class ReservationFlowTest(unittest.TestCase):
         self.assertNotIn("startTimestamp", reservation)
         self.assertNotIn("endTimestamp", reservation)
 
+    def test_new_confirmation_discards_stale_replacement_target(self):
+        start = datetime(2099, 7, 12, 13, 0, tzinfo=KST)
+        self.db.collection("PendingReservations").document("20201234").set(
+            {
+                "room": "7202",
+                "startTime": start.isoformat(),
+                "duration": 2,
+                "eventParticipants": "5",
+                "ownerUid": "uid-123",
+                "flowType": main.FLOW_CHANGE_EXISTING_RESERVATION,
+                "replaceReservationId": "deleted-reservation",
+            }
+        )
+
+        proposal = main.handle_reserve(
+            {
+                "room": "4303",
+                "startTime": start.isoformat(),
+                "duration": 2,
+                "eventParticipants": "3",
+                "ownerUid": "uid-123",
+                "needsConfirmation": True,
+            },
+            "20201234",
+        )
+
+        self.assertEqual(200, proposal.status_code)
+        pending = self.db.collection("PendingReservations").documents["20201234"]
+        self.assertEqual(main.FLOW_NEW_RESERVATION, pending["flowType"])
+        self.assertNotIn("replaceReservationId", pending)
+
+        confirmation = main.handle_confirm_reservation(
+            {"ownerUid": "uid-123"},
+            "20201234",
+        )
+
+        self.assertEqual(200, confirmation.status_code)
+        self.assertIn("예약되었습니다", self.response_text(confirmation))
+        self.assertEqual(1, len(self.db.collection("Reservations").added))
+
+    def test_deleted_change_target_returns_conflict_instead_of_server_error(self):
+        start = datetime(2099, 7, 12, 13, 0, tzinfo=KST)
+        self.db.collection("PendingReservations").document("20201234").set(
+            {
+                "room": "4303",
+                "startTime": start.isoformat(),
+                "duration": 2,
+                "eventParticipants": "3",
+                "ownerUid": "uid-123",
+                "flowType": main.FLOW_CHANGE_EXISTING_RESERVATION,
+                "replaceReservationId": "deleted-reservation",
+            }
+        )
+
+        response = main.handle_confirm_reservation(
+            {"ownerUid": "uid-123"},
+            "20201234",
+        )
+
+        self.assertEqual(409, response.status_code)
+        self.assertIn("변경할 기존 예약을 찾을 수 없어요", self.response_text(response))
+        self.assertNotIn(
+            "20201234",
+            self.db.collection("PendingReservations").documents,
+        )
+
     def test_handle_reserve_room_conflict_returns_alternative_card(self):
         start = datetime(2099, 7, 11, 11, 0, tzinfo=KST)
         reservation_service.has_conflict = lambda field, *args, **kwargs: field == "roomID"
