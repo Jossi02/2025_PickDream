@@ -8,15 +8,39 @@ from firebase_functions import https_fn
 from ai_intents import recover_reserve_fields_from_text
 from ai_response import ai_action, ai_card, make_ai_response
 from room_service import display_room_label, find_available_rooms, find_room
+from reservation_cancel_service import handle_cancel_reservation as execute_cancel_reservation
+from reservation_change_service import (
+    execute_change_reservation,
+    execute_change_reservation_selection,
+    execute_select_reservation_for_change,
+)
+from reservation_domain import (
+    FLOW_ALTERNATIVE_NEW_RESERVATION,
+    FLOW_BLOCKED_EXISTING_RESERVATION,
+    FLOW_CHANGE_EXISTING_RESERVATION,
+    FLOW_NEW_RESERVATION,
+    build_pending_reservation_data,
+    build_reservation_document,
+    can_confirm_pending,
+    infer_pending_flow_type,
+    missing_required_fields,
+    normalize_event_participants,
+    parse_participants_int,
+    parse_reservation_start_and_duration,
+    reservation_time_range,
+)
+from reservation_repository import (
+    find_conflicting_reservation as repository_find_conflicting_reservation,
+    find_user_reservation as repository_find_user_reservation,
+    has_conflict as repository_has_conflict,
+    list_user_upcoming_reservations as repository_list_user_upcoming_reservations,
+    reservation_documents_for_field as repository_reservation_documents_for_field,
+)
 
 from reservation_utils import (
     KST,
     format_korean_time,
-    intervals_overlap,
-    parse_korean_time,
     reservation_room_id,
-    room_id_aliases,
-    same_room_id,
 )
 
 
@@ -46,274 +70,47 @@ def _format_room_label(room_id, room_data=None):
 
 
 def _reservation_documents_for_field(field: str, value: str):
-    db = _require_db()
-    if field != "roomID":
-        yield from db.collection("Reservations").where(field, "==", value).stream()
-        return
-
-    seen = set()
-    for alias in room_id_aliases(value):
-        for doc in db.collection("Reservations").where("roomID", "==", alias).stream():
-            if doc.id in seen:
-                continue
-            seen.add(doc.id)
-            yield doc
+    yield from repository_reservation_documents_for_field(_require_db(), field, value)
 
 
 def has_conflict(field: str, value: str, start, end, exclude_id: str = None):
-    # 인덱스 문제와 안드로이드 앱의 Extra Fields 크래시 문제를 해결하기 위해,
-    # startTimestamp/endTimestamp 필드 대신 문자열 startTime/endTime을 파싱하여 메모리에서 모두 비교합니다.
-    conflicts = _reservation_documents_for_field(field, value)
-
-    logging.info("[has_conflict] field=%s, value=%s, exclude_id=%s", field, value, exclude_id)
-
-    for doc in conflicts:
-        if exclude_id and doc.id == exclude_id:
-            continue
-
-        data = doc.to_dict()
-        if data.get("status") in {"취소", "거절"}:
-            continue
-
-        c_start = data.get("startTimestamp")
-        c_end = data.get("endTimestamp")
-
-        # 만약 Timestamp 객체가 없다면 문자열에서 파싱
-        if not c_start or not hasattr(c_start, "timestamp"):
-            c_start = parse_korean_time(data.get("startTime"))
-        if not c_end or not hasattr(c_end, "timestamp"):
-            c_end = parse_korean_time(data.get("endTime"))
-
-        if not c_start or not c_end:
-            continue
-
-        try:
-            # 겹치는 조건: 기존 예약의 시작시간이 새 예약의 종료시간보다 앞서고, 기존 예약의 종료시간이 새 예약의 시작시간보다 뒤일 때
-            if intervals_overlap(start, end, c_start, c_end):
-                return True
-        except Exception as e:
-            logging.warning("[has_conflict] 날짜 비교 중 오류 무시 (문서 ID: %s): %s", doc.id, e)
-            continue
-
-    return False
+    return repository_has_conflict(
+        _reservation_documents_for_field,
+        field,
+        value,
+        start,
+        end,
+        exclude_id=exclude_id,
+    )
 
 
 def find_conflicting_reservation(field: str, value: str, start, end, exclude_id: str = None):
-    conflicts = _reservation_documents_for_field(field, value)
-    for doc in conflicts:
-        if exclude_id and doc.id == exclude_id:
-            continue
-
-        data = doc.to_dict()
-        if data.get("status") in {"취소", "거절"}:
-            continue
-
-        c_start = data.get("startTimestamp")
-        c_end = data.get("endTimestamp")
-        if not c_start or not hasattr(c_start, "timestamp"):
-            c_start = parse_korean_time(data.get("startTime"))
-        if not c_end or not hasattr(c_end, "timestamp"):
-            c_end = parse_korean_time(data.get("endTime"))
-
-        if c_start and c_end and intervals_overlap(start, end, c_start, c_end):
-            return doc.id, data
-    return None, None
-
-
-def reservation_time_range(data):
-    start = data.get("startTimestamp")
-    end = data.get("endTimestamp")
-    if not start or not hasattr(start, "timestamp"):
-        start = parse_korean_time(data.get("startTime"))
-    if not end or not hasattr(end, "timestamp"):
-        end = parse_korean_time(data.get("endTime"))
-    return start, end
+    return repository_find_conflicting_reservation(
+        _reservation_documents_for_field,
+        field,
+        value,
+        start,
+        end,
+        exclude_id=exclude_id,
+    )
 
 
 def find_user_reservation(userID, room_id=None, target_start=None):
-    db = _require_db()
-    now = datetime.now(KST)
-    candidates = []
-    for doc in db.collection("Reservations").where("userID", "==", userID).stream():
-        data = doc.to_dict()
-        if data.get("status") in {"취소", "거절"}:
-            continue
-
-        doc_room_id = str(data.get("roomID") or data.get("room") or "").strip()
-        if room_id and not same_room_id(doc_room_id, room_id):
-            continue
-
-        start, end = reservation_time_range(data)
-        if target_start and start and end:
-            if not (start <= target_start < end or start.date() == target_start.date()):
-                continue
-
-        if start:
-            priority = 0 if start >= now else 1
-            distance = abs((start - (target_start or now)).total_seconds())
-        else:
-            priority = 2
-            distance = 10**12
-        candidates.append((priority, distance, doc.id, data, start, end))
-
-    if not candidates:
-        return None, None, None, None
-
-    candidates.sort(key=lambda item: (item[0], item[1]))
-    _, _, doc_id, data, start, end = candidates[0]
-    return doc_id, data, start, end
+    return repository_find_user_reservation(
+        _require_db(),
+        userID,
+        room_id=room_id,
+        target_start=target_start,
+    )
 
 
 def list_user_upcoming_reservations(userID, limit=3):
-    db = _require_db()
-    now = datetime.now(KST)
-    rooms_cache = {}
-    for doc in db.collection("rooms").stream():
-        data = doc.to_dict()
-        room_id = reservation_room_id(doc.id, data)
-        rooms_cache[room_id] = _format_room_label(room_id, data)
-
-    reservations = []
-    for doc in db.collection("Reservations").where("userID", "==", userID).stream():
-        data = doc.to_dict()
-        if data.get("status") in {"취소", "거절"}:
-            continue
-        start, end = reservation_time_range(data)
-        if end and end < now:
-            continue
-        data["_documentId"] = doc.id
-        room_id = str(data.get("roomID") or "")
-        room_name = rooms_cache.get(room_id, _format_room_label(room_id))
-        reservations.append((start or datetime.max.replace(tzinfo=KST), room_name, data))
-
-    reservations.sort(key=lambda item: item[0])
-    return reservations[:limit]
-
-
-def normalize_event_participants(query):
-    event_participants_value = query.get("eventParticipants")
-
-    if not event_participants_value and query.get("keywords"):
-        person_count = next(
-            (
-                int(k.replace("명", ""))
-                for k in query.get("keywords", [])
-                if isinstance(k, str) and k.endswith("명") and k[:-1].isdigit()
-            ),
-            None,
-        )
-        if person_count:
-            event_participants_value = str(person_count)
-
-    if isinstance(event_participants_value, str):
-        return event_participants_value.strip()
-    return str(event_participants_value or "").strip()
-
-
-def missing_required_fields(query, fields):
-    return [
-        field
-        for field in fields
-        if not query.get(field) or not str(query.get(field)).strip()
-    ]
-
-
-def parse_reservation_start_and_duration(query):
-    query["duration"] = int(query["duration"])
-    start = datetime.fromisoformat(query["startTime"])
-    if start.tzinfo is None:
-        start = start.replace(tzinfo=KST)
-    return start, query["duration"]
-
-
-def parse_participants_int(value):
-    numeric_part = re.search(r"\d+", str(value or "").strip())
-    return int(numeric_part.group()) if numeric_part else 1
-
-
-def build_reservation_document(query, userID, owner_uid, start, end):
-    return {
-        "documentId": "",
-        "roomID": query["room"],
-        "startTime": format_korean_time(start),
-        "endTime": format_korean_time(end),
-        "eventName": query.get("eventName", "추천 예약"),
-        "eventDescription": query.get("eventDescription", ""),
-        "eventTarget": query.get("eventTarget", ""),
-        "eventParticipants": parse_participants_int(query.get("eventParticipants")),
-        "status": query.get("status", "대기"),
-        "userID": userID,
-        "ownerUid": owner_uid or "",
-    }
-
-# Reservation flow constants and write handlers moved from main.py.
-FLOW_NEW_RESERVATION = "new_reservation"
-FLOW_BLOCKED_EXISTING_RESERVATION = "blocked_existing_reservation"
-FLOW_ALTERNATIVE_NEW_RESERVATION = "alternative_new_reservation"
-FLOW_CHANGE_EXISTING_RESERVATION = "change_existing_reservation"
-
-CONFIRMABLE_PENDING_FLOWS = {
-    FLOW_NEW_RESERVATION,
-    FLOW_ALTERNATIVE_NEW_RESERVATION,
-    FLOW_CHANGE_EXISTING_RESERVATION,
-}
-
-def infer_pending_flow_type(pending_data):
-    flow_type = (pending_data or {}).get("flowType")
-    if flow_type:
-        return flow_type
-    if (pending_data or {}).get("replaceReservationId"):
-        return FLOW_CHANGE_EXISTING_RESERVATION
-    if (pending_data or {}).get("blockedByReservationId"):
-        return FLOW_BLOCKED_EXISTING_RESERVATION
-    return FLOW_NEW_RESERVATION
-
-
-def can_confirm_pending(pending_data):
-    pending_data = pending_data or {}
-    has_required_reservation_fields = all(
-        str(pending_data.get(field) or "").strip()
-        for field in ("room", "startTime", "duration", "eventParticipants")
+    return repository_list_user_upcoming_reservations(
+        _require_db(),
+        userID,
+        room_label_formatter=_format_room_label,
+        limit=limit,
     )
-    return (
-        infer_pending_flow_type(pending_data) in CONFIRMABLE_PENDING_FLOWS
-        and has_required_reservation_fields
-    )
-
-
-def build_pending_reservation_data(
-    room,
-    start,
-    duration,
-    event_participants=None,
-    owner_uid="",
-    event_name=None,
-    event_description="",
-    event_target="",
-    flow_type=FLOW_NEW_RESERVATION,
-    replace_reservation_id=None,
-    blocked_by_reservation_id=None,
-    blocked_by_own_reservation=False,
-):
-    data = {
-        "room": room,
-        "startTime": start.isoformat() if isinstance(start, datetime) else start,
-        "duration": duration,
-        "eventName": event_name or "\ucd94\ucc9c \uc608\uc57d",
-        "eventDescription": event_description or "",
-        "eventTarget": event_target or "",
-        "ownerUid": owner_uid,
-        "flowType": flow_type,
-    }
-    if event_participants is not None:
-        data["eventParticipants"] = str(event_participants).strip()
-    if replace_reservation_id:
-        data["replaceReservationId"] = replace_reservation_id
-    if blocked_by_reservation_id:
-        data["blockedByReservationId"] = blocked_by_reservation_id
-        data["blockedByOwnReservation"] = bool(blocked_by_own_reservation)
-    return data
-
 def suggest_alternative_room_response(
     original_room_name,
     start,
@@ -944,291 +741,43 @@ def handle_confirm_reservation(query, userID):
 
 
 def handle_cancel_reservation(query, userID):
-    try:
-        target_room_id, target_room_data = find_room(query.get("room"))
-        target_reservation_room_id = (
-            reservation_room_id(target_room_id, target_room_data)
-            if target_room_id and target_room_data
-            else None
-        )
-        target_start = None
-        if query.get("startTime"):
-            try:
-                target_start = datetime.fromisoformat(str(query.get("startTime")))
-                if target_start.tzinfo is None:
-                    target_start = target_start.replace(tzinfo=KST)
-            except (TypeError, ValueError):
-                target_start = None
-        logging.info(
-            "[handle_cancel_reservation] target_room_id=%s, "
-            "target_reservation_room_id=%s, userID=%s",
-            target_room_id,
-            target_reservation_room_id,
-            userID,
-        )
-
-        if not target_reservation_room_id and not target_start and not query.get("forceClosest"):
-            candidates = list_user_upcoming_reservations(userID, limit=5)
-            if not candidates:
-                return https_fn.Response("취소할 예약이 없습니다.", status=404)
-
-            lines = []
-            for _, room_name, data in candidates:
-                start_text = data.get("startTime", "?")
-                end_text = data.get("endTime", "?")
-                participants = data.get("eventParticipants")
-                participant_text = f" / {participants}명" if participants else ""
-                lines.append(f"- {room_name}: {start_text} ~ {end_text}{participant_text}")
-
-            return https_fn.Response(
-                "취소할 예약을 선택해 주세요:\n" + "\n".join(lines),
-                status=200,
-            )
-
-        res_id, res_data, _, _ = find_user_reservation(
-            userID,
-            room_id=target_reservation_room_id,
-            target_start=target_start,
-        )
-        if not res_id:
-            return https_fn.Response("취소할 예약이 없습니다.", status=404)
-
-        cancelled_room_id = res_data.get("roomID")
-        _, cancelled_room_data = find_room(cancelled_room_id)
-        cancelled_room_name = display_room_label(cancelled_room_id, cancelled_room_data)
-        db.collection("Reservations").document(res_id).delete()
-
-        return https_fn.Response(f"{cancelled_room_name} 예약이 취소되었습니다 ✅", status=200)
-
-    except Exception as e:
-        logging.exception("[handle_cancel_reservation] 예외 발생")
-        return https_fn.Response("예약 취소 중 오류가 발생했어요. 로그를 확인해주세요.", status=500)
-
-
+    return execute_cancel_reservation(
+        query,
+        userID,
+        db=_require_db(),
+        find_room=find_room,
+        find_user_reservation=find_user_reservation,
+        list_user_upcoming_reservations=list_user_upcoming_reservations,
+        display_room_label=display_room_label,
+    )
 def handle_change_reservation_selection(query, userID):
-    candidates = list_user_upcoming_reservations(userID, limit=5)
-    if not candidates:
-        return https_fn.Response("변경할 예약이 없습니다.", status=404)
-
-    requested_changes = {
-        "requestedNewRoom": query.get("newRoom"),
-        "requestedStartTime": query.get("startTime"),
-        "requestedDuration": query.get("duration"),
-        "requestedEventParticipants": query.get("eventParticipants"),
-    }
-    pending_data = {
-        "flowType": FLOW_CHANGE_EXISTING_RESERVATION,
-        "awaitingReservationSelection": True,
-        "ownerUid": query.get("ownerUid", ""),
-        **{key: value for key, value in requested_changes.items() if value not in (None, "")},
-    }
-    db.collection("PendingReservations").document(userID).set(pending_data)
-
-    cards = []
-    lines = []
-    for _, room_name, data in candidates:
-        document_id = str(data.get("_documentId") or "").strip()
-        if not document_id:
-            continue
-        start, end = reservation_time_range(data)
-        start_text = data.get("startTime", "?")
-        end_text = data.get("endTime", "?")
-        participants = data.get("eventParticipants")
-        participant_text = f" / {participants}명" if participants else ""
-        lines.append(f"- {room_name}: {start_text} ~ {end_text}{participant_text}")
-        cards.append(
-            ai_card(
-                "change_selection",
-                room_name,
-                start_time=format_korean_time(start) if start else start_text,
-                end_time=format_korean_time(end) if end else end_text,
-                participants=participants,
-                actions=[
-                    ai_action(
-                        "예약 변경",
-                        f"예약 변경 대상 선택::{document_id}",
-                        "예약 변경",
-                    )
-                ],
-            )
-        )
-
-    if not cards:
-        return https_fn.Response("변경할 예약이 없습니다.", status=404)
-
-    response_text = "변경할 예약을 선택해 주세요:\n" + "\n".join(lines)
-    return make_ai_response(
-        response_text,
-        query=query,
-        title="변경할 예약을 선택해 주세요",
-        cards=cards,
+    return execute_change_reservation_selection(
+        query,
+        userID,
+        db=_require_db(),
+        list_user_upcoming_reservations=list_user_upcoming_reservations,
     )
 
 
 def handle_select_reservation_for_change(reservation_id, userID, structured=False):
-    reservation_ref = db.collection("Reservations").document(reservation_id)
-    reservation_doc = reservation_ref.get()
-    if not reservation_doc.exists:
-        return https_fn.Response("변경할 예약을 찾을 수 없습니다.", status=404)
-
-    reservation_data = reservation_doc.to_dict() or {}
-    if str(reservation_data.get("userID") or "") != str(userID):
-        return https_fn.Response("변경할 예약을 찾을 수 없습니다.", status=404)
-
-    pending_ref = db.collection("PendingReservations").document(userID)
-    pending_doc = pending_ref.get()
-    pending_data = pending_doc.to_dict() if pending_doc.exists else {}
-    requested_query = {
-        "replaceReservationId": reservation_id,
-        "ownerUid": pending_data.get("ownerUid", ""),
-        "_structuredResponse": structured,
-    }
-    requested_mapping = {
-        "requestedNewRoom": "newRoom",
-        "requestedStartTime": "startTime",
-        "requestedDuration": "duration",
-        "requestedEventParticipants": "eventParticipants",
-    }
-    for pending_key, query_key in requested_mapping.items():
-        value = pending_data.get(pending_key)
-        if value not in (None, ""):
-            requested_query[query_key] = value
-
-    if any(key in requested_query for key in ("newRoom", "startTime", "duration", "eventParticipants")):
-        return handle_change_reservation(requested_query, userID)
-
-    start, end = reservation_time_range(reservation_data)
-    if not start or not end:
-        return https_fn.Response("예약 시간 정보를 확인할 수 없습니다.", status=400)
-
-    duration = max(1, int((end - start).total_seconds() / 3600))
-    target_pending = build_pending_reservation_data(
-        room=reservation_data.get("roomID") or reservation_data.get("room"),
-        start=start,
-        duration=duration,
-        event_participants=reservation_data.get("eventParticipants"),
-        owner_uid=reservation_data.get("ownerUid", ""),
-        event_name=reservation_data.get("eventName"),
-        event_description=reservation_data.get("eventDescription", ""),
-        event_target=reservation_data.get("eventTarget", ""),
-        flow_type=FLOW_CHANGE_EXISTING_RESERVATION,
-        replace_reservation_id=reservation_id,
-    )
-    target_pending["awaitingChangeDetails"] = True
-    pending_ref.set(target_pending)
-
-    room_id = target_pending.get("room")
-    _, room_data = find_room(room_id)
-    room_name = display_room_label(room_id, room_data)
-    return https_fn.Response(
-        f"{room_name} 예약을 선택했어요. "
-        "변경할 인원, 시간 또는 강의실을 알려주세요.\n"
-        "예: '3명으로 변경해줘'",
-        status=200,
+    return execute_select_reservation_for_change(
+        reservation_id,
+        userID,
+        structured,
+        db=_require_db(),
+        handle_change_reservation=handle_change_reservation,
+        find_room=find_room,
+        display_room_label=display_room_label,
     )
 
 
 def handle_change_reservation(query, userID):
-    try:
-        target_room_id, target_room_data = find_room(query.get("room"))
-        target_reservation_room_id = (
-            reservation_room_id(target_room_id, target_room_data)
-            if target_room_id and target_room_data
-            else None
-        )
-        new_room_id, new_room_data = find_room(query.get("newRoom"))
-        new_reservation_room_id = (
-            reservation_room_id(new_room_id, new_room_data)
-            if new_room_id and new_room_data
-            else None
-        )
-        logging.info(
-            "[handle_change_reservation] target_room_id=%s, "
-            "target_reservation_room_id=%s, userID=%s",
-            target_room_id,
-            target_reservation_room_id,
-            userID,
-        )
-
-        target_start = None
-        if query.get("targetStartTime"):
-            try:
-                target_start = datetime.fromisoformat(str(query.get("targetStartTime")))
-                if target_start.tzinfo is None:
-                    target_start = target_start.replace(tzinfo=KST)
-            except (TypeError, ValueError):
-                target_start = None
-
-        replace_reservation_id = str(query.get("replaceReservationId") or "").strip()
-        if replace_reservation_id:
-            exact_doc = db.collection("Reservations").document(replace_reservation_id).get()
-            exact_data = exact_doc.to_dict() if exact_doc.exists else None
-            if exact_data and str(exact_data.get("userID") or "") == str(userID):
-                res_id = replace_reservation_id
-                res_data = exact_data
-                start, end = reservation_time_range(res_data)
-            else:
-                res_id, res_data, start, end = None, None, None, None
-        else:
-            res_id, res_data, start, end = find_user_reservation(
-                userID,
-                room_id=target_reservation_room_id,
-                target_start=target_start,
-            )
-        if not res_id:
-            return https_fn.Response("변경할 예약이 없습니다.", status=404)
-
-        new_duration = query.get("duration")
-        new_participants = query.get("eventParticipants")
-        new_start_time = query.get("startTime")
-        duration_hours = int((end - start).total_seconds() / 3600) if end and start else 2
-
-        if new_start_time:
-            try:
-                start = datetime.fromisoformat(new_start_time)
-                if start.tzinfo is None:
-                    start = start.replace(tzinfo=KST)
-            except:
-                pass
-
-        if new_duration:
-            duration_hours = int(new_duration)
-
-        if duration_hours < 1 or duration_hours > 6:
-            return https_fn.Response("예약 시간은 최소 1시간, 최대 6시간까지만 가능합니다.", status=400)
-
-        end = start + timedelta(hours=duration_hours)
-        now = datetime.now(KST)
-        if start < now:
-            return https_fn.Response("예약 시작 시간은 현재 시간 이후여야 해요.", status=400)
-
-        if has_conflict("userID", userID, start, end, exclude_id=res_id):
-            return https_fn.Response("해당 시간에 이미 예약한 다른 강의실이 있어요.", status=409)
-        final_room_id = new_reservation_room_id or res_data.get("roomID")
-        if has_conflict("roomID", final_room_id, start, end, exclude_id=res_id):
-            return https_fn.Response("해당 시간에 이미 강의실이 예약되어 있어요.", status=409)
-
-        update_data = {
-            "roomID": final_room_id,
-            "startTime": format_korean_time(start),
-            "endTime": format_korean_time(end),
-            "startTimestamp": firestore.DELETE_FIELD,
-            "endTimestamp": firestore.DELETE_FIELD,
-        }
-
-        if new_participants:
-            participants_str = str(new_participants).strip()
-            numeric_part = re.search(r'\d+', participants_str)
-            if numeric_part:
-                update_data["eventParticipants"] = int(numeric_part.group())
-
-        db.collection("Reservations").document(res_id).update(update_data)
-        
-        _, room_data = find_room(final_room_id)
-        room_name = display_room_label(final_room_id, room_data)
-        
-        return https_fn.Response(f"{room_name} 예약이 성공적으로 변경되었습니다 ✅", status=200)
-
-    except Exception as e:
-        logging.exception("[handle_change_reservation] 예외 발생")
-        return https_fn.Response("예약 변경 중 오류가 발생했어요. 로그를 확인해주세요.", status=500)
+    return execute_change_reservation(
+        query,
+        userID,
+        db=_require_db(),
+        find_room=find_room,
+        find_user_reservation=find_user_reservation,
+        has_conflict=has_conflict,
+        display_room_label=display_room_label,
+    )
