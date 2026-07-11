@@ -15,8 +15,8 @@ import androidx.navigation.NavOptions
 import androidx.navigation.fragment.findNavController
 import com.example.pick_dream.R
 import com.example.pick_dream.model.Reservation
-import com.example.pick_dream.notification.PickDreamNotificationManager
 import com.example.pick_dream.repository.UserRepository
+import com.example.pick_dream.util.ReservationTimeUtils
 import com.google.android.material.button.MaterialButton
 
 class ManualReservationInputFragment : Fragment() {
@@ -47,6 +47,7 @@ class ManualReservationInputFragment : Fragment() {
         val tvBuildingInfo = view.findViewById<TextView>(R.id.tvBuildingInfo)
         val tvRoomName = view.findViewById<TextView>(R.id.tvRoomName)
 
+        restoreFormDetails()
         setupWatchers()
         observeViewModel()
 
@@ -68,6 +69,12 @@ class ManualReservationInputFragment : Fragment() {
         val watcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                reservationViewModel.updateDetails(
+                    etEventName.text.toString(),
+                    etEventDetail.text.toString(),
+                    etEventTarget.text.toString(),
+                    etEventPeople.text.toString()
+                )
                 updateButtonState()
             }
             override fun afterTextChanged(s: Editable?) {}
@@ -77,6 +84,14 @@ class ManualReservationInputFragment : Fragment() {
         etEventTarget.addTextChangedListener(watcher)
         etEventPeople.addTextChangedListener(watcher)
         updateButtonState()
+    }
+
+    private fun restoreFormDetails() {
+        val state = reservationViewModel.formState
+        etEventName.setText(state.eventName)
+        etEventDetail.setText(state.eventDescription)
+        etEventTarget.setText(state.eventTarget)
+        etEventPeople.setText(state.eventParticipantsText)
     }
 
     private fun updateButtonState() {
@@ -106,8 +121,10 @@ class ManualReservationInputFragment : Fragment() {
         reservationViewModel.submitResult.observe(viewLifecycleOwner) { isSuccess ->
             if (isSuccess == true) {
                 pendingReservationForNotification?.let { reservation ->
-                    PickDreamNotificationManager.showReservationComplete(requireContext(), reservation)
-                    PickDreamNotificationManager.scheduleUsageReminder(requireContext(), reservation)
+                    ManualReservationNotificationCoordinator.onReservationCreated(
+                        requireContext(),
+                        reservation
+                    )
                 }
                 pendingReservationForNotification = null
                 showSuccessDialog()
@@ -127,19 +144,21 @@ class ManualReservationInputFragment : Fragment() {
         val eventParticipants = etEventPeople.text.toString().toIntOrNull() ?: 0
         val eventTarget = etEventTarget.text.toString()
 
-        if (eventName.isBlank() || eventDescription.isBlank() || eventParticipants <= 0 || eventTarget.isBlank()) {
-            Toast.makeText(context, "행사명, 목적, 인원수, 참여대상을 모두 입력해주세요.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
         val roomName = arguments?.getString("roomName") ?: ""
         val room = com.example.pick_dream.ui.home.search.LectureRoomRepository.lectureRoomsWithFavorites.value
             ?.filterIsInstance<com.example.pick_dream.ui.home.search.ListItem.RoomItem>()
             ?.find { it.lectureRoom.name == roomName }
             ?.lectureRoom
-        
-        if (room != null && eventParticipants > room.capacity) {
-            Toast.makeText(context, "최대 수용 인원(${room.capacity}명)을 초과할 수 없습니다.", Toast.LENGTH_SHORT).show()
+
+        val validationError = ManualReservationValidator.validateDetails(
+            eventName,
+            eventDescription,
+            eventTarget,
+            eventParticipants,
+            room?.capacity
+        )
+        if (validationError != null) {
+            Toast.makeText(context, validationError, Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -151,14 +170,14 @@ class ManualReservationInputFragment : Fragment() {
 
                 arguments?.let { args ->
                     val roomId = args.getString("roomId") ?: ""
-                    val startTimeStr = toKorean12HourString(
+                    val startTimeStr = ReservationTimeUtils.toReservationTimeString(
                         args.getInt("selectedYear"),
                         args.getInt("selectedMonth") + 1,
                         args.getInt("selectedDay"),
                         args.getInt("startHour"),
                         args.getInt("startMinute")
                     )
-                    val endTimeStr = toKorean12HourString(
+                    val endTimeStr = ReservationTimeUtils.toReservationTimeString(
                         args.getInt("selectedYear"),
                         args.getInt("selectedMonth") + 1,
                         args.getInt("selectedDay"),
@@ -197,6 +216,7 @@ class ManualReservationInputFragment : Fragment() {
         
         dialogView.findViewById<TextView>(R.id.btnDialogOk).setOnClickListener {
             dialog.dismiss()
+            reservationViewModel.resetForm()
             findNavController().navigate(
                 R.id.homeFragment,
                 null,
@@ -218,13 +238,4 @@ class ManualReservationInputFragment : Fragment() {
         requireActivity().findViewById<View>(R.id.nav_view)?.visibility = View.VISIBLE
     }
 
-    private fun toKorean12HourString(year: Int, month: Int, day: Int, hour24: Int, minute: Int): String {
-        val ampm = if (hour24 < 12) "오전" else "오후"
-        val hour12 = when {
-            hour24 == 0 -> 12
-            hour24 > 12 -> hour24 - 12
-            else -> hour24
-        }
-        return String.format("%d년 %d월 %d일 %s %d시 %d분 0초 UTC+9", year, month, day, ampm, hour12, minute)
-    }
 }

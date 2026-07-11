@@ -5,18 +5,55 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.pick_dream.model.Reservation
-import com.example.pick_dream.ui.home.reservation.ReservationRepository
-import com.example.pick_dream.util.ReservationTimeUtils
 import com.prolificinteractive.materialcalendarview.CalendarDay
 import kotlinx.coroutines.launch
 
 class ManualReservationViewModel : ViewModel() {
-    var selectedDay: CalendarDay? = null
-    var startHour: Int? = null
-    var startMinute: Int? = null
-    var endHour: Int? = null
-    var endMinute: Int? = null
-    var selectedEquipments: List<String> = emptyList()
+    var formState = ManualReservationFormState()
+        private set
+
+    var selectedDay: CalendarDay?
+        get() = formState.selectedDay
+        set(value) { formState = formState.copy(selectedDay = value) }
+    var startHour: Int?
+        get() = formState.startHour
+        set(value) { formState = formState.copy(startHour = value) }
+    var startMinute: Int?
+        get() = formState.startMinute
+        set(value) { formState = formState.copy(startMinute = value) }
+    var endHour: Int?
+        get() = formState.endHour
+        set(value) { formState = formState.copy(endHour = value) }
+    var endMinute: Int?
+        get() = formState.endMinute
+        set(value) { formState = formState.copy(endMinute = value) }
+    var selectedEquipments: List<String>
+        get() = formState.selectedEquipments
+        set(value) { formState = formState.copy(selectedEquipments = value) }
+
+    fun beginRoom(roomId: String) {
+        if (formState.roomId != roomId) {
+            formState = ManualReservationFormState(roomId = roomId)
+        }
+    }
+
+    fun updateDetails(
+        eventName: String,
+        eventDescription: String,
+        eventTarget: String,
+        eventParticipantsText: String
+    ) {
+        formState = formState.copy(
+            eventName = eventName,
+            eventDescription = eventDescription,
+            eventTarget = eventTarget,
+            eventParticipantsText = eventParticipantsText
+        )
+    }
+
+    fun resetForm() {
+        formState = ManualReservationFormState()
+    }
 
     private val _isSubmitting = MutableLiveData<Boolean>()
     val isSubmitting: LiveData<Boolean> get() = _isSubmitting
@@ -33,53 +70,43 @@ class ManualReservationViewModel : ViewModel() {
     fun loadExistingReservations(roomId: String) {
         _existingReservations.value = null
         viewModelScope.launch {
-            _existingReservations.value = ReservationRepository.getReservationsByRoom(roomId)
+            _existingReservations.value = ManualReservationRepository.getReservationsByRoom(roomId)
         }
     }
-
-
-    fun isStartTimeInPast(year: Int, month: Int, day: Int, startHour: Int, startMinute: Int): Boolean {
-        return ReservationTimeUtils.isStartTimeInPast(year, month, day, startHour, startMinute)
-    }
-
-    fun isTimeOverlapping(year: Int, month: Int, day: Int, startHour: Int, startMinute: Int, endHour: Int, endMinute: Int): Boolean {
-        val existing = _existingReservations.value ?: return false
-        val startTimeStr = ReservationTimeUtils.toReservationTimeString(year, month, day, startHour, startMinute)
-        val endTimeStr = ReservationTimeUtils.toReservationTimeString(year, month, day, endHour, endMinute)
-        val newStartMs = ReservationTimeUtils.parseReservationTimeMillis(startTimeStr) ?: return false
-        val newEndMs = ReservationTimeUtils.parseReservationTimeMillis(endTimeStr) ?: return false
-
-        return ReservationTimeUtils.hasOverlap(newStartMs, newEndMs, existing)
-    }
+    fun validateSlot(
+        year: Int?,
+        month: Int?,
+        day: Int?,
+        startHour: Int?,
+        startMinute: Int?,
+        endHour: Int?,
+        endMinute: Int?
+    ): ManualReservationSlotValidation = ManualReservationValidator.validateSlot(
+        year,
+        month,
+        day,
+        startHour,
+        startMinute,
+        endHour,
+        endMinute,
+        _existingReservations.value
+    )
 
     fun makeReservation(reservation: Reservation) {
         _isSubmitting.value = true
         viewModelScope.launch {
             try {
                 // 1. Fetch existing reservations for this room
-                val existingReservations = ReservationRepository.getReservationsByRoom(reservation.roomID)
-                
-                // 2. Check for time overlaps
-                val newStartMs = ReservationTimeUtils.parseReservationTimeMillis(reservation.startTime) ?: 0L
-                val newEndMs = ReservationTimeUtils.parseReservationTimeMillis(reservation.endTime) ?: 0L
-                
-                if (newStartMs <= System.currentTimeMillis()) {
-                    _errorMessage.value = "이미 지난 시간입니다."
-                    _submitResult.value = false
-                    return@launch
-                }
+                val existingReservations =
+                    ManualReservationRepository.getReservationsByRoom(reservation.roomID)
+                val validationError =
+                    ManualReservationValidator.validateReservation(reservation, existingReservations)
 
-                val isOverlapping = ReservationTimeUtils.hasOverlap(
-                    newStartMs,
-                    newEndMs,
-                    existingReservations
-                )
-                
-                if (isOverlapping) {
-                    _errorMessage.value = "이미 예약된 시간입니다."
+                if (validationError != null) {
+                    _errorMessage.value = validationError
                     _submitResult.value = false
                 } else {
-                    val success = ReservationRepository.addReservation(reservation)
+                    val success = ManualReservationRepository.createReservation(reservation)
                     if (!success) {
                         _errorMessage.value = "예약 중 오류가 발생했습니다."
                     }

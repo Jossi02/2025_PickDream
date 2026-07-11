@@ -19,18 +19,6 @@ import com.example.pick_dream.util.RoomIdUtils
 class ManualReservationFragment : Fragment() {
     private val reservationViewModel: ManualReservationViewModel by activityViewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        if (arguments == null || savedInstanceState == null) {
-            reservationViewModel.selectedDay = null
-            reservationViewModel.startHour = null
-            reservationViewModel.startMinute = null
-            reservationViewModel.endHour = null
-            reservationViewModel.endMinute = null
-            reservationViewModel.selectedEquipments = emptyList()
-        }
-    }
-
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -74,36 +62,26 @@ class ManualReservationFragment : Fragment() {
         fun updateButtonState() {
             val isDateSelected = tvDateSelectTitle.text != "날짜 선택"
             val isTimeSelected = tvTimeSelect.text != "시간 선택"
-
-            var isOverlapping = false
-            var isPastStartTime = false
-            if (isDateSelected && isTimeSelected && selectedDay != null) {
-                isPastStartTime = reservationViewModel.isStartTimeInPast(
-                    selectedDay!!.year,
-                    selectedDay!!.month + 1,
-                    selectedDay!!.day,
-                    spinnerStartHour.selectedItem as Int,
-                    spinnerStartMinute.selectedItem as Int
+            val validation = if (isDateSelected && isTimeSelected) {
+                reservationViewModel.validateSlot(
+                    selectedDay?.year,
+                    selectedDay?.month?.plus(1),
+                    selectedDay?.day,
+                    spinnerStartHour.selectedItem as? Int,
+                    spinnerStartMinute.selectedItem as? Int,
+                    spinnerEndHour.selectedItem as? Int,
+                    spinnerEndMinute.selectedItem as? Int
                 )
-                isOverlapping = reservationViewModel.isTimeOverlapping(
-                    selectedDay!!.year,
-                    selectedDay!!.month + 1,
-                    selectedDay!!.day,
-                    spinnerStartHour.selectedItem as Int,
-                    spinnerStartMinute.selectedItem as Int,
-                    spinnerEndHour.selectedItem as Int,
-                    spinnerEndMinute.selectedItem as Int
-                )
+            } else {
+                ManualReservationSlotValidation.Invalid("날짜와 시간을 선택해 주세요")
             }
-
-            val isReservationDataLoaded = reservationViewModel.existingReservations.value != null
-            val isValid = isDateSelected && isTimeSelected && isReservationDataLoaded && !isPastStartTime && !isOverlapping
+            val isValid = validation is ManualReservationSlotValidation.Ready
             
             btnNext.isEnabled = isValid
             btnNext.text = when {
-                isPastStartTime -> "이미 지난 시간입니다"
-                isOverlapping -> "이미 예약된 시간입니다"
-                isDateSelected && isTimeSelected && !isReservationDataLoaded -> "예약 확인 중..."
+                validation is ManualReservationSlotValidation.Loading -> "예약 확인 중..."
+                isDateSelected && isTimeSelected &&
+                    validation is ManualReservationSlotValidation.Invalid -> validation.message
                 else -> "다음"
             }
 
@@ -161,7 +139,9 @@ class ManualReservationFragment : Fragment() {
         )
         tvBuilding.text = building
         tvRoomName.text = roomName
-        
+
+        reservationViewModel.beginRoom(roomId)
+        val restoredFormState = reservationViewModel.formState
         reservationViewModel.loadExistingReservations(roomId)
 
         btnNext.setOnClickListener {
@@ -199,7 +179,7 @@ class ManualReservationFragment : Fragment() {
             .commit()
         calendarView.addDecorator(PastDayDecorator(requireContext()))
 
-        reservationViewModel.selectedDay?.let {
+        restoredFormState.selectedDay?.let {
             selectedDay = it
             calendarView.selectedDate = it
             calendarView.setCurrentDate(it)
@@ -210,11 +190,6 @@ class ManualReservationFragment : Fragment() {
             tvDateSelectTitle.text = String.format("%d년 %d월 %d일(%s)", it.year, it.month + 1, it.day, dayOfWeek)
             spinnerYear.setSelection(it.year - 2020)
         }
-        reservationViewModel.startHour?.let { spinnerStartHour.setSelection((9..21).indexOf(it)) }
-        reservationViewModel.startMinute?.let { spinnerStartMinute.setSelection(listOf(0,10,20,30,40,50).indexOf(it)) }
-        reservationViewModel.endHour?.let { spinnerEndHour.setSelection((9..21).indexOf(it)) }
-        reservationViewModel.endMinute?.let { spinnerEndMinute.setSelection(listOf(0,10,20,30,40,50).indexOf(it)) }
-
         tvYearSelect.text = "${today.get(java.util.Calendar.YEAR)}년"
         tvMonthSelect.text = "${today.get(java.util.Calendar.MONTH) + 1}월"
 
@@ -332,9 +307,9 @@ class ManualReservationFragment : Fragment() {
         spinnerStartMinute.adapter = createNumberAdapter(minutes)
         spinnerEndMinute.adapter = createNumberAdapter(minutes)
 
-        reservationViewModel.startHour?.let { spinnerStartHour.selectValue(it) }
-        reservationViewModel.startMinute?.let { spinnerStartMinute.selectValue(it) }
-        updateStartMinuteSpinner(reservationViewModel.startMinute)
+        restoredFormState.startHour?.let { spinnerStartHour.selectValue(it) }
+        restoredFormState.startMinute?.let { spinnerStartMinute.selectValue(it) }
+        updateStartMinuteSpinner(restoredFormState.startMinute)
 
         attachNumberDropdown(spinnerStartHour, { hours }) {
             updateTimeText()
@@ -413,11 +388,12 @@ class ManualReservationFragment : Fragment() {
         }
 
         updateEndTimeSpinners()
-        reservationViewModel.endHour?.let {
+        restoredFormState.endHour?.let {
             spinnerEndHour.selectValue(it)
-            updateEndMinuteSpinner(reservationViewModel.endMinute)
+            updateEndMinuteSpinner(restoredFormState.endMinute)
         }
-        reservationViewModel.endMinute?.let { spinnerEndMinute.selectValue(it) }
+        restoredFormState.endMinute?.let { spinnerEndMinute.selectValue(it) }
+        updateTimeText()
 
         spinnerEndMinute.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>, view: View?, position: Int, id: Long) {
@@ -480,10 +456,10 @@ class ManualReservationFragment : Fragment() {
             layoutEquipmentList.addView(row)
             checkBoxList.add(cb)
         }
-        if (reservationViewModel.selectedEquipments.isNotEmpty()) {
+        if (restoredFormState.selectedEquipments.isNotEmpty()) {
             isProgrammaticChange = true
             equipmentList.forEachIndexed { idx, item ->
-                checkBoxList[idx].isChecked = reservationViewModel.selectedEquipments.contains(item)
+                checkBoxList[idx].isChecked = restoredFormState.selectedEquipments.contains(item)
             }
             isProgrammaticChange = false
             val selected = equipmentList.filterIndexed { idx, _ -> checkBoxList[idx].isChecked }
