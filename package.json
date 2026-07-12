@@ -1,5 +1,12 @@
 {
+  "scripts": {
+    "test:firestore-rules": "firebase emulators:exec --only firestore --project pickdreamtest \"node --test tests/firestore.rules.test.mjs\""
+  },
   "dependencies": {
     "google-auth-library": "^10.9.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase": "^12.16.0"
   }
 }

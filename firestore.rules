@@ -35,18 +35,20 @@ service cloud.firestore {
 
     function keepsOwnerFieldsStable(before, after) {
       return after.userID == before.userID
-        && (
-          !('ownerUid' in before) ||
-          after.ownerUid == before.ownerUid
-        );
+        && after.ownerUid == before.ownerUid;
+    }
+
+    function updatesOnlyFavorites(before, after) {
+      return after.diff(before).affectedKeys().hasOnly(['favoriteRooms'])
+        && after.favoriteRooms is list;
     }
 
     match /User/{uid} {
-      allow read, write: if request.auth.uid == uid;
-    }
-
-    match /User/{uid}/{subCollection=**} {
-      allow read, write: if request.auth.uid == uid;
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create, delete: if false;
+      allow update: if isSignedIn()
+                    && request.auth.uid == uid
+                    && updatesOnlyFavorites(resource.data, request.resource.data);
     }
 
     match /rooms/{roomId} {
@@ -63,7 +65,7 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if hasValidOwnerFields(request.resource.data);
       allow update: if isDocumentOwner(resource.data)
-                    && isDocumentOwner(request.resource.data)
+                    && hasValidOwnerFields(request.resource.data)
                     && keepsOwnerFieldsStable(resource.data, request.resource.data);
       allow delete: if isDocumentOwner(resource.data);
     }
@@ -73,7 +75,7 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if hasValidOwnerFields(request.resource.data);
       allow update: if isDocumentOwner(resource.data)
-                    && isDocumentOwner(request.resource.data)
+                    && hasValidOwnerFields(request.resource.data)
                     && keepsOwnerFieldsStable(resource.data, request.resource.data);
       allow delete: if isDocumentOwner(resource.data);
     }
