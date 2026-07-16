@@ -63,3 +63,6 @@ fun authenticationFailure(operation: String): RepositoryFailure =
 
 fun networkFailure(operation: String): RepositoryFailure =
     RepositoryFailure(RepositoryErrorKind.NETWORK, operation)
+
+fun dataFailure(operation: String): RepositoryFailure =
+    RepositoryFailure(RepositoryErrorKind.DATA, operation)

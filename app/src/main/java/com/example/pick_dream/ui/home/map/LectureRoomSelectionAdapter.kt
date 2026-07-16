@@ -51,7 +51,7 @@ class LectureRoomSelectionAdapter(
     companion object {
         private val DiffCallback = object : DiffUtil.ItemCallback<LectureRoom>() {
             override fun areItemsTheSame(oldItem: LectureRoom, newItem: LectureRoom): Boolean {
-                return oldItem.id == newItem.id
+                return oldItem.documentId == newItem.documentId
             }
 
             override fun areContentsTheSame(oldItem: LectureRoom, newItem: LectureRoom): Boolean {
@@ -59,4 +59,4 @@ class LectureRoomSelectionAdapter(
             }
         }
     }
-} 
+}

@@ -113,7 +113,7 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
                     val roomsInBuilding = allRooms.filter { it.buildingName == buildingName }
                     val availableCount = roomsInBuilding.count { it.isRentalAvailable }
                     
-                    val roomIdsInBuilding = roomsInBuilding.map { it.id }
+                    val roomIdsInBuilding = roomsInBuilding.map { it.roomID }
                     val reviewsInBuilding = allReviews.filter { it.roomID in roomIdsInBuilding }
                     val avgRating = if (reviewsInBuilding.isNotEmpty()) {
                         reviewsInBuilding.map { it.rating }.average().toFloat()

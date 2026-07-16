@@ -38,6 +38,12 @@ service cloud.firestore {
         && after.ownerUid == before.ownerUid;
     }
 
+    function hasCanonicalRoomID(data) {
+      return ('roomID' in data)
+        && data.roomID is string
+        && data.roomID.matches('^[1-9][0-9]{3}$');
+    }
+
     function updatesOnlyFavorites(before, after) {
       return after.diff(before).affectedKeys().hasOnly(['favoriteRooms'])
         && after.favoriteRooms is list;
@@ -63,20 +69,24 @@ service cloud.firestore {
 
     match /Reviews/{reviewId} {
       allow read: if isSignedIn();
-      allow create: if hasValidOwnerFields(request.resource.data);
+      allow create: if hasValidOwnerFields(request.resource.data)
+                    && hasCanonicalRoomID(request.resource.data);
       allow update: if isDocumentOwner(resource.data)
                     && hasValidOwnerFields(request.resource.data)
-                    && keepsOwnerFieldsStable(resource.data, request.resource.data);
+                    && keepsOwnerFieldsStable(resource.data, request.resource.data)
+                    && hasCanonicalRoomID(request.resource.data);
       allow delete: if isDocumentOwner(resource.data);
     }
 
     match /Reservations/{reservationId} {
       // Any signed-in user can read room schedules. Writes are limited to owned documents.
       allow read: if isSignedIn();
-      allow create: if hasValidOwnerFields(request.resource.data);
+      allow create: if hasValidOwnerFields(request.resource.data)
+                    && hasCanonicalRoomID(request.resource.data);
       allow update: if isDocumentOwner(resource.data)
                     && hasValidOwnerFields(request.resource.data)
-                    && keepsOwnerFieldsStable(resource.data, request.resource.data);
+                    && keepsOwnerFieldsStable(resource.data, request.resource.data)
+                    && hasCanonicalRoomID(request.resource.data);
       allow delete: if isDocumentOwner(resource.data);
     }
   }

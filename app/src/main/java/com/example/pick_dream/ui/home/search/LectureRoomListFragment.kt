@@ -82,6 +82,7 @@ class LectureRoomListFragment : Fragment() {
             onItemClick = { room ->
                 val action = LectureRoomListFragmentDirections
                     .actionLectureRoomListFragmentToLectureRoomDetailFragment(
+                        roomId = room.roomID,
                         roomName = room.name,
                         building = "${room.buildingName} (${room.buildingDetail})",
                         buildingName = room.buildingName,
@@ -90,7 +91,7 @@ class LectureRoomListFragment : Fragment() {
                 findNavController().navigate(action)
             },
             onFavoriteClick = { room ->
-                LectureRoomRepository.toggleFavorite(room.id) { result ->
+                LectureRoomRepository.toggleFavorite(room.documentId) { result ->
                     if (result is RepositoryResult.Error && _binding != null) {
                         Toast.makeText(requireContext(), result.failure.userMessage, Toast.LENGTH_SHORT).show()
                     }

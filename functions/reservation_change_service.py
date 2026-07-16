@@ -243,7 +243,11 @@ def execute_change_reservation(
 
         if has_conflict("userID", userID, start, end, exclude_id=res_id):
             return https_fn.Response("해당 시간에 이미 예약한 다른 강의실이 있어요.", status=409)
-        final_room_id = new_reservation_room_id or res_data.get("roomID")
+        existing_room_id = str(res_data.get("roomID") or res_data.get("room") or "").strip()
+        resolved_existing_room_id, _ = find_room(existing_room_id)
+        final_room_id = new_reservation_room_id or resolved_existing_room_id
+        if not final_room_id:
+            return https_fn.Response("예약 강의실 정보를 확인할 수 없습니다.", status=400)
         if has_conflict("roomID", final_room_id, start, end, exclude_id=res_id):
             return https_fn.Response("해당 시간에 이미 강의실이 예약되어 있어요.", status=409)
 
@@ -271,4 +275,3 @@ def execute_change_reservation(
     except Exception as e:
         logging.exception("[handle_change_reservation] 예외 발생")
         return https_fn.Response("예약 변경 중 오류가 발생했어요. 로그를 확인해주세요.", status=500)
-

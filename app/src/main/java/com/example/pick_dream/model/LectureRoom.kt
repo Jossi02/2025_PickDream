@@ -6,7 +6,8 @@ import kotlinx.parcelize.Parcelize
 
 @Parcelize
 data class LectureRoom(
-    val id: String = "",
+    val documentId: String = "",
+    val roomID: String = "",
     val name: String = "",
     val buildingName: String = "",
     val buildingDetail: String = "",
@@ -21,6 +22,9 @@ data class LectureRoom(
     var isRentalAvailable: Boolean = false,
     val imageUrl: String? = null
 ) : Parcelable {
+    val canonicalRoomID: String
+        get() = com.example.pick_dream.util.RoomIdUtils.canonicalRoomId(this)
+
     val displayBuildingName: String
         get() {
             val detail = buildingDetail.takeIf { it.isNotBlank() } ?: when (buildingName) {

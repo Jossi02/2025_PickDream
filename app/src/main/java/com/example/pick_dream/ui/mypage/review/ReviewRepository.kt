@@ -6,8 +6,10 @@ import com.example.pick_dream.repository.NetworkStatus
 import com.example.pick_dream.repository.RepositoryResult
 import com.example.pick_dream.repository.authenticationFailure
 import com.example.pick_dream.repository.awaitWithTimeout
+import com.example.pick_dream.repository.dataFailure
 import com.example.pick_dream.repository.networkFailure
 import com.example.pick_dream.repository.repositoryFailure
+import com.example.pick_dream.util.RoomIdUtils
 import com.google.firebase.firestore.TransactionOptions
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
@@ -64,6 +66,9 @@ object ReviewRepository {
                 ?: return RepositoryResult.Error(authenticationFailure("리뷰 생성"))
             if (!NetworkStatus.hasValidatedInternet()) {
                 return RepositoryResult.Error(networkFailure("리뷰 생성"))
+            }
+            if (!RoomIdUtils.isCanonicalRoomId(review.roomID)) {
+                return RepositoryResult.Error(dataFailure("리뷰 생성"))
             }
             val document = db.collection("Reviews").document()
             db.runTransaction(transactionOptions) { transaction ->

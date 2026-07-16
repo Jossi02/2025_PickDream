@@ -59,26 +59,38 @@ def find_room(room_identifier):
 
     doc = db.collection("rooms").document(room_identifier).get()
     if doc.exists:
-        return doc.id, doc.to_dict()
+        data = doc.to_dict()
+        return reservation_room_id(doc.id, data), data
 
     docs = db.collection("rooms").where("name", "==", room_identifier).get()
     if docs:
-        return docs[0].id, docs[0].to_dict()
+        data = docs[0].to_dict()
+        return reservation_room_id(docs[0].id, data), data
 
     room_num = extract_room_id(room_identifier)
     if room_num:
         all_rooms = db.collection("rooms").stream()
+        matches = []
         for r_doc in all_rooms:
             r_data = r_doc.to_dict()
-            if reservation_room_id(r_doc.id, r_data) == room_num:
-                return r_doc.id, r_data
+            canonical_id = reservation_room_id(r_doc.id, r_data)
+            if canonical_id == room_num or (
+                len(room_num) == 3 and canonical_id.endswith(room_num)
+            ):
+                matches.append((canonical_id, r_data))
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            return None, None
+        if room_identifier.isdigit():
+            return None, None
 
     all_rooms = db.collection("rooms").stream()
     for r_doc in all_rooms:
         r_data = r_doc.to_dict()
         name = r_data.get("name", "")
         if room_identifier in name or name in room_identifier:
-            return r_doc.id, r_data
+            return reservation_room_id(r_doc.id, r_data), r_data
 
     return None, None
 
@@ -262,7 +274,7 @@ def handle_recommend_room(query, userID):
 def handle_list_rooms(query, userID):
     db = _require_db()
     docs = db.collection("rooms").stream()
-    rooms = [doc.id for doc in docs]
+    rooms = [display_room_label(reservation_room_id(doc.id, doc.to_dict()), doc.to_dict()) for doc in docs]
     return https_fn.Response("전체 강의실: " + ", ".join(rooms), status=200)
 
 
@@ -272,7 +284,10 @@ def handle_list_rooms_by_building(query, userID):
     if not target:
         return https_fn.Response("건물명을 입력해 주세요. 예: '5강의동'", status=400)
     docs = db.collection("rooms").where("buildingDetail", "==", target).stream()
-    room_ids = [doc.id for doc in docs]
+    room_ids = [
+        display_room_label(reservation_room_id(doc.id, doc.to_dict()), doc.to_dict())
+        for doc in docs
+    ]
     if not room_ids:
         return https_fn.Response(f"'{target}'에 해당하는 강의실이 없어요.", status=200)
     return https_fn.Response(f"{target}의 강의실 목록: {', '.join(room_ids)}", status=200)

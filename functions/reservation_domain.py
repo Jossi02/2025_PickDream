@@ -7,7 +7,7 @@ in reservation_service.py while the split is performed incrementally.
 import re
 from datetime import datetime
 
-from reservation_utils import KST, format_korean_time, parse_korean_time
+from reservation_utils import KST, format_korean_time, is_canonical_room_id, parse_korean_time
 
 
 FLOW_NEW_RESERVATION = "new_reservation"
@@ -78,6 +78,8 @@ def reservation_time_range(data):
 
 
 def build_reservation_document(query, user_id, owner_uid, start, end):
+    if not is_canonical_room_id(query.get("room")):
+        raise ValueError("Reservation room must use a canonical four-digit roomID")
     return {
         "documentId": "",
         "roomID": query["room"],

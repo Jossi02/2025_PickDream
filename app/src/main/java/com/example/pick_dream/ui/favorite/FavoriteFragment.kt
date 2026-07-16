@@ -41,7 +41,7 @@ class FavoriteFragment : Fragment() {
         adapter = FavoriteRoomsAdapter(
             rooms = emptyList(),
             onFavoriteClick = { room ->
-                LectureRoomRepository.toggleFavorite(room.id) { result ->
+                LectureRoomRepository.toggleFavorite(room.documentId) { result ->
                     if (result is RepositoryResult.Error && _binding != null) {
                         Toast.makeText(requireContext(), result.failure.userMessage, Toast.LENGTH_SHORT).show()
                     }
@@ -50,6 +50,7 @@ class FavoriteFragment : Fragment() {
             onDetailClick = { room ->
                 findNavController().navigate(
                     FavoriteFragmentDirections.actionNavigationFavoriteToLectureRoomDetailFragment(
+                        roomId = room.roomID,
                         roomName = room.name,
                         buildingName = room.buildingName,
                         buildingDetail = room.buildingDetail,
@@ -60,6 +61,7 @@ class FavoriteFragment : Fragment() {
             onReserveClick = { room ->
                 findNavController().navigate(
                     FavoriteFragmentDirections.actionNavigationFavoriteToManualReservationFragment(
+                        roomId = room.roomID,
                         building = room.displayBuildingName,
                         roomName = room.name
                     )

@@ -147,9 +147,13 @@ class ManualReservationInputFragment : Fragment() {
         val eventTarget = etEventTarget.text.toString()
 
         val roomName = arguments?.getString("roomName") ?: ""
+        val roomId = arguments?.getString("roomId").orEmpty()
         val room = com.example.pick_dream.ui.home.search.LectureRoomRepository.lectureRoomsWithFavorites.value
             ?.filterIsInstance<com.example.pick_dream.ui.home.search.ListItem.RoomItem>()
-            ?.find { it.lectureRoom.name == roomName }
+            ?.find {
+                it.lectureRoom.roomID == roomId ||
+                    (roomId.isBlank() && it.lectureRoom.name == roomName)
+            }
             ?.lectureRoom
 
         val validationError = ManualReservationValidator.validateDetails(
@@ -180,7 +184,7 @@ class ManualReservationInputFragment : Fragment() {
                 }
 
                 arguments?.let { args ->
-                    val roomId = args.getString("roomId") ?: ""
+                    val canonicalRoomId = args.getString("roomId") ?: ""
                     val startTimeStr = ReservationTimeUtils.toReservationTimeString(
                         args.getInt("selectedYear"),
                         args.getInt("selectedMonth") + 1,
@@ -198,7 +202,7 @@ class ManualReservationInputFragment : Fragment() {
                     
                     val reservation = Reservation(
                         userID = studentId,
-                        roomID = roomId,
+                        roomID = canonicalRoomId,
                         eventName = eventName,
                         eventDescription = eventDescription,
                         eventTarget = eventTarget,

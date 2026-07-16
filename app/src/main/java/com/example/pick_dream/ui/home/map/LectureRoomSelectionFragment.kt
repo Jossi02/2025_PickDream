@@ -46,6 +46,7 @@ class LectureRoomSelectionFragment : Fragment() {
         adapter = LectureRoomSelectionAdapter { lectureRoom ->
             val action = LectureRoomSelectionFragmentDirections
                 .actionLectureRoomSelectionFragmentToManualReservationFragment(
+                    roomId = lectureRoom.roomID,
                     building = args.buildingDetail,
                     roomName = lectureRoom.name
                 )
@@ -76,7 +77,11 @@ class LectureRoomSelectionFragment : Fragment() {
                     .awaitWithTimeout()
                 if (_binding == null) return@launch
                 val rooms = documents.mapNotNull { doc ->
-                    doc.toObject(LectureRoom::class.java).copy(id = doc.id)
+                    val rawRoom = doc.toObject(LectureRoom::class.java)
+                    val roomWithDocumentId = rawRoom.copy(documentId = doc.id)
+                    roomWithDocumentId.copy(
+                        roomID = com.example.pick_dream.util.RoomIdUtils.canonicalRoomId(roomWithDocumentId)
+                    )
                 }
 
                 val availableRooms = rooms.filter { it.isRentalAvailable }

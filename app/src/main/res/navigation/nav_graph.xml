@@ -159,6 +159,10 @@
         android:label="강의실 상세"
         tools:layout="@layout/fragment_lecture_room_detail">
         <argument
+            android:name="roomId"
+            app:argType="string"
+            android:defaultValue="" />
+        <argument
             android:name="roomName"
             app:argType="string" />
         <argument
@@ -180,6 +184,7 @@
         android:name="com.example.pick_dream.ui.home.search.manualReservation.ManualReservationInputFragment"
         android:label="수동 대여 입력"
         tools:layout="@layout/fragment_manual_reservation_input">
+        <argument android:name="roomId" app:argType="string" android:defaultValue="" />
         <argument android:name="building" app:argType="string" />
         <argument android:name="roomName" app:argType="string" />
     </fragment>
@@ -189,6 +194,7 @@
         android:name="com.example.pick_dream.ui.home.search.manualReservation.ManualReservationFragment"
         android:label="수동 대여"
         tools:layout="@layout/fragment_manual_reservation">
+        <argument android:name="roomId" app:argType="string" android:defaultValue="" />
         <argument android:name="building" app:argType="string" />
         <argument android:name="roomName" app:argType="string" />
         <action

@@ -118,7 +118,7 @@ test("users can read only their profile and update only favorites", async () => 
   await assertSucceeds(getDoc(doc(db, "User", "uid-1")));
   await assertFails(getDoc(doc(db, "User", "uid-2")));
   await assertSucceeds(
-    updateDoc(doc(db, "User", "uid-1"), { favoriteRooms: ["7202"] })
+    updateDoc(doc(db, "User", "uid-1"), { favoriteRooms: ["room-7202"] })
   );
   await assertFails(
     updateDoc(doc(db, "User", "uid-1"), { studentId: "20205678" })
@@ -146,6 +146,12 @@ test("reservation writes enforce both ownerUid and student ID", async () => {
     setDoc(
       doc(ownerDb, "Reservations", "spoofed-student"),
       reservationData({ userID: "20205678" })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(ownerDb, "Reservations", "legacy-room-id"),
+      reservationData({ roomID: "202" })
     )
   );
   await assertSucceeds(
@@ -192,6 +198,15 @@ test("review ownership and server-only collections are enforced", async () => {
       roomID: "7202",
       rating: 4,
       comment: "좋아요",
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "Reviews", "legacy-room-review"), {
+      ownerUid: "uid-1",
+      userID: "20201234",
+      roomID: "202",
+      rating: 4,
+      comment: "legacy",
     })
   );
   await assertFails(

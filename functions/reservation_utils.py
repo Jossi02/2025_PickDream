@@ -65,6 +65,7 @@ def _canonicalize_room_id(room_id: Any, room_data: Mapping[str, Any]) -> Optiona
         building_number = _building_number(room_data)
         if building_number:
             return f"{building_number}{extracted}"
+        return None
     return extracted
 
 
@@ -92,10 +93,7 @@ def room_id_aliases(room_id: Any) -> List[str]:
     if not canonical:
         return []
 
-    aliases = [canonical]
-    if len(canonical) == 4 and canonical.isdigit():
-        aliases.append(canonical[1:])
-    return list(dict.fromkeys(aliases))
+    return [canonical]
 
 
 def same_room_id(left: Any, right: Any) -> bool:
@@ -176,6 +174,10 @@ _WEEKDAY_INDEX = {
     "\uC77C": 6,
     "\uC77C\uC694\uC77C": 6,
 }
+
+
+def is_canonical_room_id(value: Any) -> bool:
+    return bool(re.fullmatch(r"[1-9]\d{3}", str(value or "").strip()))
 
 
 def parse_natural_korean_datetime(

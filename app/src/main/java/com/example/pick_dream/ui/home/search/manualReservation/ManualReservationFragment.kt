@@ -132,11 +132,13 @@ class ManualReservationFragment : Fragment() {
 
         val building = arguments?.getString("building") ?: ""
         val roomName = arguments?.getString("roomName") ?: ""
-        val roomId = RoomIdUtils.canonicalRoomId(
-            buildingName = building.substringBefore("(").trim(),
-            buildingDetail = building,
-            roomName = roomName
-        )
+        val roomId = arguments?.getString("roomId")
+            ?.takeIf(RoomIdUtils::isCanonicalRoomId)
+            ?: RoomIdUtils.canonicalRoomId(
+                buildingName = building.substringBefore("(").trim(),
+                buildingDetail = building,
+                roomName = roomName
+            )
         tvBuilding.text = building
         tvRoomName.text = roomName
 

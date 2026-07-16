@@ -10,8 +10,15 @@ object RoomIdUtils {
     )
 
     fun canonicalRoomId(room: LectureRoom): String {
-        val explicitId = room.id.takeIf { it.isCanonicalRoomId() }.orEmpty()
-        if (explicitId.isNotBlank()) return explicitId
+        val explicitRoomId = canonicalRoomId(
+            buildingName = room.buildingName,
+            buildingDetail = room.buildingDetail.ifBlank { room.displayBuildingName },
+            roomName = room.roomID
+        )
+        if (explicitRoomId.hasCanonicalRoomIdFormat()) return explicitRoomId
+
+        val legacyDocumentId = room.documentId.takeIf { it.hasCanonicalRoomIdFormat() }.orEmpty()
+        if (legacyDocumentId.isNotBlank()) return legacyDocumentId
 
         return canonicalRoomId(
             buildingName = room.buildingName,
@@ -33,13 +40,13 @@ object RoomIdUtils {
             return buildingNumber + roomNumber
         }
 
-        return roomName.filter { it.isDigit() }
+        return ""
     }
 
     fun roomSearchTerms(room: LectureRoom, headerName: String? = null): List<String> {
         val canonicalId = canonicalRoomId(room)
         val roomDigits = room.name.filter { it.isDigit() }
-        val numericDocumentId = room.id.takeIf { it.isNumericRoomAlias() }.orEmpty()
+        val numericDocumentId = room.documentId.takeIf { it.isNumericRoomAlias() }.orEmpty()
 
         return buildList {
             add(numericDocumentId)
@@ -47,6 +54,7 @@ object RoomIdUtils {
             add("${canonicalId}호")
             add("${canonicalId}강의실")
             add(room.name)
+            add(room.roomID)
             add(roomDigits)
             add(room.buildingName)
             add(room.buildingDetail)
@@ -72,13 +80,7 @@ object RoomIdUtils {
     fun aliasesForReservationQuery(roomId: String): List<String> {
         val canonical = roomId.trim()
         if (canonical.isBlank()) return emptyList()
-
-        return buildList {
-            add(canonical)
-            if (canonical.isCanonicalRoomId()) {
-                add(canonical.drop(1))
-            }
-        }.distinct()
+        return listOf(canonical)
     }
 
     fun matchesReservationRoomId(room: LectureRoom, roomId: String): Boolean {
@@ -87,10 +89,7 @@ object RoomIdUtils {
 
         val canonicalId = canonicalRoomId(room)
         if (canonicalId == query) return true
-        if (aliasesForReservationQuery(canonicalId).contains(query)) return true
-
-        // Legacy reservations may contain only the room number, e.g. 202 instead of 7202.
-        return query.length == 3 && query.all { it.isDigit() } && canonicalId.endsWith(query)
+        return false
     }
 
     fun buildingNumber(buildingName: String, buildingDetail: String): String {
@@ -104,7 +103,7 @@ object RoomIdUtils {
     private fun matchesNumericSearch(room: LectureRoom, query: String): Boolean {
         val canonicalId = canonicalRoomId(room)
         val roomDigits = room.name.filter { it.isDigit() }
-        val numericDocumentId = room.id.takeIf { it.isNumericRoomAlias() }.orEmpty()
+        val numericDocumentId = room.documentId.takeIf { it.isNumericRoomAlias() }.orEmpty()
         val buildingNumber = canonicalId.takeIf { it.isNotBlank() }?.firstOrNull()?.toString().orEmpty()
 
         if (query.length == 1) {
@@ -135,9 +134,11 @@ object RoomIdUtils {
             .orEmpty()
     }
 
-    private fun String.isCanonicalRoomId(): Boolean {
-        return matches(Regex("""\d{4}"""))
+    private fun String.hasCanonicalRoomIdFormat(): Boolean {
+        return matches(Regex("""[1-9]\d{3}"""))
     }
+
+    fun isCanonicalRoomId(value: String): Boolean = value.trim().hasCanonicalRoomIdFormat()
 
     private fun String.isNumericRoomAlias(): Boolean {
         return matches(Regex("""\d{3,4}"""))

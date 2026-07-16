@@ -42,8 +42,8 @@ class ReservationUtilsTest(unittest.TestCase):
         )
 
     def test_room_id_aliases_match_legacy_reservations(self):
-        self.assertEqual(["7202", "202"], room_id_aliases("7202"))
-        self.assertTrue(same_room_id("7202", "202"))
+        self.assertEqual(["7202"], room_id_aliases("7202"))
+        self.assertFalse(same_room_id("7202", "202"))
         self.assertFalse(same_room_id("5101", "7202"))
 
     def test_capacity_is_normalized(self):

@@ -34,6 +34,13 @@ object LectureRoomRepository {
     private val favoriteRoomIds = MutableLiveData<List<String>>()
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    private fun normalizeRoom(rawRoom: LectureRoom, documentId: String): LectureRoom {
+        val roomWithDocumentId = rawRoom.copy(documentId = documentId)
+        return roomWithDocumentId.copy(
+            roomID = RoomIdUtils.canonicalRoomId(roomWithDocumentId)
+        )
+    }
+
     // 최종적으로 UI에 보여줄 LiveData. allRooms나 favoriteRoomIds가 변경되면 자동으로 업데이트됨
     val lectureRoomsWithFavorites = MediatorLiveData<List<ListItem>>()
 
@@ -53,7 +60,7 @@ object LectureRoomRepository {
         }
 
         val updatedRooms = rooms.map { room ->
-            room.copy(isFavorite = ids.contains(room.id))
+            room.copy(isFavorite = ids.contains(room.documentId))
         }
 
         // displayBuildingName에서 숫자(강의동 번호)를 추출하여 건물별로 먼저 정렬하고, 그 다음 강의실 번호로 정렬
@@ -92,7 +99,7 @@ object LectureRoomRepository {
             try {
                 val result = db.collection("rooms").get().awaitWithTimeout()
                 val roomList = result.mapNotNull { doc ->
-                    doc.toObject<LectureRoom>().copy(id = doc.id)
+                    normalizeRoom(doc.toObject<LectureRoom>(), doc.id)
                 }
                 allRooms.postValue(roomList)
                 Log.d("LectureRoomRepo", "Successfully fetched ${roomList.size} rooms.")
@@ -186,7 +193,7 @@ object LectureRoomRepository {
                     .get()
                     .awaitWithTimeout()
                 val room = documents.firstOrNull()?.let { doc ->
-                    doc.toObject<LectureRoom>().copy(id = doc.id)
+                    normalizeRoom(doc.toObject<LectureRoom>(), doc.id)
                 }
                 onResult(room)
             } catch (error: Exception) {
@@ -210,7 +217,7 @@ object LectureRoomRepository {
             try {
                 val documents = db.collection("rooms").get().awaitWithTimeout()
                 val room = documents.mapNotNull { doc ->
-                    doc.toObject<LectureRoom>().copy(id = doc.id)
+                    normalizeRoom(doc.toObject<LectureRoom>(), doc.id)
                 }.firstOrNull { room ->
                     RoomIdUtils.matchesReservationRoomId(room, canonicalRoomId)
                 }

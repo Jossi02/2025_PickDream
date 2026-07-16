@@ -65,6 +65,19 @@ class ReservationCoreTest(unittest.TestCase):
         self.assertEqual("\ub300\uae30", document["status"])
         self.assertEqual("", document["ownerUid"])
 
+    def test_build_reservation_document_rejects_noncanonical_room_id(self):
+        start = datetime(2026, 7, 10, 9, 0, tzinfo=KST)
+        end = datetime(2026, 7, 10, 11, 0, tzinfo=KST)
+
+        with self.assertRaises(ValueError):
+            main.build_reservation_document(
+                {"room": "202", "eventParticipants": 1},
+                "20201234",
+                "uid-123",
+                start,
+                end,
+            )
+
     def test_parse_reservation_start_and_duration_assigns_kst_to_naive_start(self):
         query = {"startTime": "2026-07-10T11:00:00", "duration": "2"}
 

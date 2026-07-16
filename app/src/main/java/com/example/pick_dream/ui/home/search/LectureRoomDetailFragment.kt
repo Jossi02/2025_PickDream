@@ -32,7 +32,7 @@ class LectureRoomDetailFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         requireActivity().findViewById<View>(R.id.nav_view)?.visibility = View.GONE
 
-        viewModel.loadRoomDetail(args.roomName)
+        viewModel.loadRoomDetail(args.roomId, args.roomName)
 
         viewModel.roomDetail.observe(viewLifecycleOwner) { room ->
             if (room == null) return@observe
@@ -86,7 +86,7 @@ class LectureRoomDetailFragment : Fragment() {
             updateFavoriteUi(room.isFavorite)
             binding.btnFavorite.setOnClickListener {
                 binding.btnFavorite.isEnabled = false
-                LectureRoomRepository.toggleFavorite(room.id) { result ->
+                LectureRoomRepository.toggleFavorite(room.documentId) { result ->
                     if (_binding == null) return@toggleFavorite
                     binding.btnFavorite.isEnabled = true
                     when (result) {
@@ -114,6 +114,7 @@ class LectureRoomDetailFragment : Fragment() {
             val room = viewModel.roomDetail.value
             if (room != null) {
                 val action = LectureRoomDetailFragmentDirections.actionLectureRoomDetailFragmentToManualReservationFragment(
+                    roomId = room.roomID,
                     building = room.displayBuildingName,
                     roomName = room.name
                 )

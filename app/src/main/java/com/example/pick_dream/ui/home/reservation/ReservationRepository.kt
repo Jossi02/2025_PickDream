@@ -7,6 +7,7 @@ import com.example.pick_dream.repository.NetworkStatus
 import com.example.pick_dream.repository.RepositoryResult
 import com.example.pick_dream.repository.authenticationFailure
 import com.example.pick_dream.repository.awaitWithTimeout
+import com.example.pick_dream.repository.dataFailure
 import com.example.pick_dream.repository.networkFailure
 import com.example.pick_dream.repository.repositoryFailure
 import com.example.pick_dream.util.RoomIdUtils
@@ -84,8 +85,11 @@ object ReservationRepository {
         return try {
             val roomDocuments = db.collection("rooms").get().awaitWithTimeout().documents
             val roomDocumentPairs = roomDocuments.mapNotNull { doc ->
-                doc.toObject<LectureRoom>()?.copy(id = doc.id)?.let { room ->
-                    room to doc
+                doc.toObject<LectureRoom>()?.let { rawRoom ->
+                    val roomWithDocumentId = rawRoom.copy(documentId = doc.id)
+                    roomWithDocumentId.copy(
+                        roomID = RoomIdUtils.canonicalRoomId(roomWithDocumentId)
+                    ) to doc
                 }
             }
 
@@ -111,9 +115,10 @@ object ReservationRepository {
             if (!NetworkStatus.hasValidatedInternet()) {
                 return RepositoryResult.Error(networkFailure("예약 생성"))
             }
-            val normalizedRoomId = RoomIdUtils.aliasesForReservationQuery(reservation.roomID)
-                .firstOrNull()
-                ?: reservation.roomID.trim()
+            val normalizedRoomId = reservation.roomID.trim()
+            if (!RoomIdUtils.isCanonicalRoomId(normalizedRoomId)) {
+                return RepositoryResult.Error(dataFailure("예약 생성"))
+            }
             val document = db.collection("Reservations").document()
             val normalizedReservation = reservation.copy(
                 ownerUid = ownerUid,
