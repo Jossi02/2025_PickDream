@@ -12,6 +12,7 @@ import androidx.navigation.fragment.findNavController
 import com.example.pick_dream.R
 import com.example.pick_dream.databinding.FragmentHomeBinding
 import com.example.pick_dream.model.Reservation
+import com.example.pick_dream.repository.RepositoryResult
 import com.example.pick_dream.notification.PickDreamNotificationManager
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.squareup.picasso.Picasso
@@ -95,22 +96,31 @@ class HomeFragment : Fragment() {
 
     private fun loadLatestNotice() {
         viewLifecycleOwner.lifecycleScope.launch {
-            val notice = NoticeRepository.fetchLatestNotice()
+            val result = NoticeRepository.fetchLatestNotice()
             if (_binding == null || !isAdded) return@launch
-            
-            if (notice != null) {
-                binding.tvNoticeLatest.text = notice.title
-                binding.layoutNoticeBar.setOnClickListener {
-                    val action = HomeFragmentDirections.actionHomeFragmentToNoticeDetailFragment(
-                        title = notice.title,
-                        date = notice.date,
-                        content = notice.content
-                    )
-                    findNavController().navigate(action)
+
+            when (result) {
+                is RepositoryResult.Success -> {
+                    val notice = result.data
+                    if (notice != null) {
+                        binding.tvNoticeLatest.text = notice.title
+                        binding.layoutNoticeBar.setOnClickListener {
+                            val action = HomeFragmentDirections.actionHomeFragmentToNoticeDetailFragment(
+                                title = notice.title,
+                                date = notice.date,
+                                content = notice.content
+                            )
+                            findNavController().navigate(action)
+                        }
+                    } else {
+                        binding.tvNoticeLatest.text = "등록된 공지사항이 없습니다."
+                        binding.layoutNoticeBar.setOnClickListener(null)
+                    }
                 }
-            } else {
-                binding.tvNoticeLatest.text = "등록된 공지사항이 없습니다."
-                binding.layoutNoticeBar.setOnClickListener(null)
+                is RepositoryResult.Error -> {
+                    binding.tvNoticeLatest.text = result.failure.userMessage
+                    binding.layoutNoticeBar.setOnClickListener(null)
+                }
             }
         }
     }
@@ -121,10 +131,20 @@ class HomeFragment : Fragment() {
      */
     private fun loadMyReservation() {
         handler.removeCallbacksAndMessages(null)
-        HomeRepository.fetchActiveOrUpcomingReservation { reservation ->
+        HomeRepository.fetchActiveOrUpcomingReservation { result ->
             if (_binding == null || !isAdded) return@fetchActiveOrUpcomingReservation
-            updateReservationCard(reservation)
+            when (result) {
+                is RepositoryResult.Success -> updateReservationCard(result.data)
+                is RepositoryResult.Error -> showReservationLoadError(result.failure.userMessage)
+            }
         }
+    }
+
+    private fun showReservationLoadError(message: String) {
+        binding.layoutNoReservation.visibility = View.VISIBLE
+        binding.tvNoReservationMessage.text = message
+        binding.layoutReservationDetails.visibility = View.GONE
+        binding.flReservationStatusVisual.visibility = View.GONE
     }
 
     private fun updateReservationCard(reservation: Reservation?) {
@@ -152,7 +172,12 @@ class HomeFragment : Fragment() {
         }
 
         lifecycleScope.launch {
-            val imageUrl = ReservationRepository.getRoomImages(listOf(canonicalRoomId))[canonicalRoomId]
+            val imageUrl = when (
+                val result = ReservationRepository.getRoomImages(listOf(canonicalRoomId))
+            ) {
+                is RepositoryResult.Success -> result.data[canonicalRoomId]
+                is RepositoryResult.Error -> null
+            }
             if (_binding == null || !isAdded) return@launch
             if (!imageUrl.isNullOrEmpty()) {
                 Picasso.get().load(imageUrl).into(binding.ivRoomBackground)

@@ -5,6 +5,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.pick_dream.model.Notice
+import com.example.pick_dream.repository.RepositoryResult
 import kotlinx.coroutines.launch
 
 class NoticeViewModel : ViewModel() {
@@ -22,6 +23,9 @@ class NoticeViewModel : ViewModel() {
     private val _isLoading = MutableLiveData<Boolean>()
     val isLoading: LiveData<Boolean> get() = _isLoading
 
+    private val _message = MutableLiveData<String>()
+    val message: LiveData<String> get() = _message
+
     private val pageSize = 8
     private var currentSearchQuery = ""
     private var currentFilteredList: List<Notice> = emptyList()
@@ -33,10 +37,14 @@ class NoticeViewModel : ViewModel() {
     fun loadNotices() {
         _isLoading.value = true
         viewModelScope.launch {
-            val notices = NoticeRepository.fetchAllNotices()
-            _allNotices.value = notices
-            currentFilteredList = notices
-            updatePagination()
+            when (val result = NoticeRepository.fetchAllNotices()) {
+                is RepositoryResult.Success -> {
+                    _allNotices.value = result.data
+                    currentFilteredList = result.data
+                    updatePagination()
+                }
+                is RepositoryResult.Error -> _message.value = result.failure.userMessage
+            }
             _isLoading.value = false
         }
     }

@@ -3,11 +3,15 @@ package com.example.pick_dream.repository
 import com.example.pick_dream.model.User
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 object UserRepository {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val callbackScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     fun getCurrentUid(): String? = auth.currentUser?.uid
 
@@ -16,7 +20,7 @@ object UserRepository {
         return db.collection("User")
             .document(uid)
             .get()
-            .await()
+            .awaitWithTimeout()
             .toObject(User::class.java)
     }
 
@@ -26,15 +30,9 @@ object UserRepository {
             return
         }
 
-        db.collection("User")
-            .document(uid)
-            .get()
-            .addOnSuccessListener { document ->
-                onResult(document.toObject(User::class.java))
-            }
-            .addOnFailureListener {
-                onResult(null)
-            }
+        callbackScope.launch {
+            onResult(runCatching { getCurrentUser() }.getOrNull())
+        }
     }
 
     suspend fun getCurrentStudentId(): String? {
@@ -42,7 +40,7 @@ object UserRepository {
         val document = db.collection("User")
             .document(uid)
             .get()
-            .await()
+            .awaitWithTimeout()
 
         return document.getString("studentId")
             ?: document.getString("userID")
@@ -54,14 +52,8 @@ object UserRepository {
             return
         }
 
-        db.collection("User")
-            .document(uid)
-            .get()
-            .addOnSuccessListener { document ->
-                onResult(document.getString("studentId") ?: document.getString("userID"))
-            }
-            .addOnFailureListener {
-                onResult(null)
-            }
+        callbackScope.launch {
+            onResult(runCatching { getCurrentStudentId() }.getOrNull())
+        }
     }
 }

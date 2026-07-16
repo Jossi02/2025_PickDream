@@ -17,6 +17,10 @@ import com.example.pick_dream.R
 import com.example.pick_dream.databinding.FragmentReviewBinding
 import com.example.pick_dream.model.Review
 import com.example.pick_dream.repository.UserRepository
+import com.example.pick_dream.repository.NetworkStatus
+import com.example.pick_dream.repository.RepositoryResult
+import com.example.pick_dream.repository.networkFailure
+import com.example.pick_dream.repository.repositoryFailure
 import com.example.pick_dream.ui.mypage.review.ReviewRepository
 import kotlinx.coroutines.launch
 
@@ -82,6 +86,14 @@ class ReviewFragment : Fragment() {
     }
 
     private fun submitReview() {
+        if (!NetworkStatus.hasValidatedInternet()) {
+            Toast.makeText(
+                context,
+                networkFailure("리뷰 생성").userMessage,
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
         binding.btnSubmit.isEnabled = false // 중복 제출 방지
 
         lifecycleScope.launch {
@@ -103,17 +115,23 @@ class ReviewFragment : Fragment() {
                 )
 
                 // 리뷰 추가를 Repository 로 위임
-                val success = ReviewRepository.addReview(review)
-                if (success) {
-                    Log.d("ReviewFragment", "Review successfully submitted")
-                    findNavController().navigate(R.id.action_reviewFragment_to_reviewCompleteFragment)
-                } else {
-                    Toast.makeText(context, "리뷰 제출에 실패했습니다.", Toast.LENGTH_SHORT).show()
-                    binding.btnSubmit.isEnabled = true
+                when (val result = ReviewRepository.addReview(review)) {
+                    is RepositoryResult.Success -> {
+                        Log.d("ReviewFragment", "Review successfully submitted")
+                        findNavController().navigate(R.id.action_reviewFragment_to_reviewCompleteFragment)
+                    }
+                    is RepositoryResult.Error -> {
+                        Toast.makeText(context, result.failure.userMessage, Toast.LENGTH_SHORT).show()
+                        binding.btnSubmit.isEnabled = true
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("ReviewFragment", "Failed to fetch user info or submit review", e)
-                Toast.makeText(context, "오류가 발생했습니다.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    repositoryFailure("리뷰 생성", e).userMessage,
+                    Toast.LENGTH_SHORT
+                ).show()
                 binding.btnSubmit.isEnabled = true
             }
         }

@@ -6,7 +6,9 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.pick_dream.model.Review
+import com.example.pick_dream.repository.RepositoryResult
 import com.example.pick_dream.repository.UserRepository
+import com.example.pick_dream.repository.repositoryFailure
 import kotlinx.coroutines.launch
 
 class ReviewViewModel : ViewModel() {
@@ -35,12 +37,14 @@ class ReviewViewModel : ViewModel() {
                 }
 
                 // 학번을 기준으로 리뷰 목록 조회
-                val reviewList = ReviewRepository.getReviewsByUser(studentId)
-                _reviews.value = reviewList
+                when (val result = ReviewRepository.getReviewsByUser(studentId)) {
+                    is RepositoryResult.Success -> _reviews.value = result.data
+                    is RepositoryResult.Error -> _message.value = result.failure.userMessage
+                }
 
             } catch (e: Exception) {
                 Log.e("ReviewViewModel", "리뷰 로딩 실패", e)
-                _message.value = "리뷰 목록을 불러오는데 실패했습니다."
+                _message.value = repositoryFailure("리뷰 목록 조회", e).userMessage
             } finally {
                 _isLoading.value = false
             }

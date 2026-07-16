@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -11,6 +12,7 @@ import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
 import com.example.pick_dream.R
 import com.example.pick_dream.databinding.FragmentLectureRoomDetailBinding
+import com.example.pick_dream.repository.RepositoryResult
 
 class LectureRoomDetailFragment : Fragment() {
     private val viewModel: LectureRoomDetailViewModel by viewModels()
@@ -83,9 +85,24 @@ class LectureRoomDetailFragment : Fragment() {
 
             updateFavoriteUi(room.isFavorite)
             binding.btnFavorite.setOnClickListener {
-                LectureRoomRepository.toggleFavorite(room.id)
-                room.isFavorite = !room.isFavorite
-                updateFavoriteUi(room.isFavorite)
+                binding.btnFavorite.isEnabled = false
+                LectureRoomRepository.toggleFavorite(room.id) { result ->
+                    if (_binding == null) return@toggleFavorite
+                    binding.btnFavorite.isEnabled = true
+                    when (result) {
+                        is RepositoryResult.Success -> {
+                            room.isFavorite = result.data
+                            updateFavoriteUi(result.data)
+                        }
+                        is RepositoryResult.Error -> {
+                            Toast.makeText(
+                                requireContext(),
+                                result.failure.userMessage,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                }
             }
         }
 

@@ -5,6 +5,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.pick_dream.model.Reservation
+import com.example.pick_dream.repository.RepositoryResult
 import com.prolificinteractive.materialcalendarview.CalendarDay
 import kotlinx.coroutines.launch
 
@@ -70,7 +71,13 @@ class ManualReservationViewModel : ViewModel() {
     fun loadExistingReservations(roomId: String) {
         _existingReservations.value = null
         viewModelScope.launch {
-            _existingReservations.value = ManualReservationRepository.getReservationsByRoom(roomId)
+            when (val result = ManualReservationRepository.getReservationsByRoom(roomId)) {
+                is RepositoryResult.Success -> _existingReservations.value = result.data
+                is RepositoryResult.Error -> {
+                    _errorMessage.value = result.failure.userMessage
+                    _existingReservations.value = null
+                }
+            }
         }
     }
     fun validateSlot(
@@ -97,8 +104,16 @@ class ManualReservationViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 // 1. Fetch existing reservations for this room
-                val existingReservations =
-                    ManualReservationRepository.getReservationsByRoom(reservation.roomID)
+                val existingReservations = when (
+                    val result = ManualReservationRepository.getReservationsByRoom(reservation.roomID)
+                ) {
+                    is RepositoryResult.Success -> result.data
+                    is RepositoryResult.Error -> {
+                        _errorMessage.value = result.failure.userMessage
+                        _submitResult.value = false
+                        return@launch
+                    }
+                }
                 val validationError =
                     ManualReservationValidator.validateReservation(reservation, existingReservations)
 
@@ -106,11 +121,13 @@ class ManualReservationViewModel : ViewModel() {
                     _errorMessage.value = validationError
                     _submitResult.value = false
                 } else {
-                    val success = ManualReservationRepository.createReservation(reservation)
-                    if (!success) {
-                        _errorMessage.value = "예약 중 오류가 발생했습니다."
+                    when (val result = ManualReservationRepository.createReservation(reservation)) {
+                        is RepositoryResult.Success -> _submitResult.value = true
+                        is RepositoryResult.Error -> {
+                            _errorMessage.value = result.failure.userMessage
+                            _submitResult.value = false
+                        }
                     }
-                    _submitResult.value = success
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "예약 처리 중 오류가 발생했습니다."

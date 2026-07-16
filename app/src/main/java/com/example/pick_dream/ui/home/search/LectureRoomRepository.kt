@@ -5,13 +5,23 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.MutableLiveData
 import com.example.pick_dream.model.LectureRoom
+import com.example.pick_dream.repository.NetworkStatus
+import com.example.pick_dream.repository.RepositoryResult
 import com.example.pick_dream.repository.UserRepository
+import com.example.pick_dream.repository.authenticationFailure
+import com.example.pick_dream.repository.awaitWithTimeout
+import com.example.pick_dream.repository.networkFailure
+import com.example.pick_dream.repository.repositoryFailure
 import com.example.pick_dream.util.RoomIdUtils
 import com.google.firebase.firestore.ktx.toObject
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.TransactionOptions
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 sealed class ListItem {
     data class HeaderItem(val buildingName: String) : ListItem()
@@ -22,6 +32,7 @@ object LectureRoomRepository {
     private val db = FirebaseFirestore.getInstance()
     private val allRooms = MutableLiveData<List<LectureRoom>>()
     private val favoriteRoomIds = MutableLiveData<List<String>>()
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     // 최종적으로 UI에 보여줄 LiveData. allRooms나 favoriteRoomIds가 변경되면 자동으로 업데이트됨
     val lectureRoomsWithFavorites = MediatorLiveData<List<ListItem>>()
@@ -77,18 +88,18 @@ object LectureRoomRepository {
         }
         
         Log.d("LectureRoomRepo", "Fetching rooms from Firestore.")
-        db.collection("rooms").get()
-            .addOnSuccessListener { result ->
+        repositoryScope.launch {
+            try {
+                val result = db.collection("rooms").get().awaitWithTimeout()
                 val roomList = result.mapNotNull { doc ->
                     doc.toObject<LectureRoom>().copy(id = doc.id)
                 }
                 allRooms.postValue(roomList)
                 Log.d("LectureRoomRepo", "Successfully fetched ${roomList.size} rooms.")
-            }
-            .addOnFailureListener { e ->
+            } catch (e: Exception) {
                 Log.e("LectureRoomRepo", "Error fetching rooms", e)
-                allRooms.postValue(emptyList()) // 실패 시 빈 리스트 전달
             }
+        }
     }
 
     fun fetchFavoriteIds() {
@@ -101,11 +112,14 @@ object LectureRoomRepository {
             .addSnapshotListener { snapshot, e ->
                 if (e != null) {
                     Log.w("LectureRoomRepo", "Listen failed.", e)
-                    favoriteRoomIds.postValue(emptyList())
                     return@addSnapshotListener
                 }
 
                 if (snapshot != null && snapshot.exists()) {
+                    if (snapshot.metadata.hasPendingWrites()) {
+                        Log.d("LectureRoomRepo", "Ignoring pending favorite changes.")
+                        return@addSnapshotListener
+                    }
                     // 이제 찜 목록 필드 이름은 'favoriteRooms' 입니다.
                     val ids = snapshot.get("favoriteRooms") as? List<String> ?: emptyList()
                     favoriteRoomIds.postValue(ids)
@@ -117,23 +131,45 @@ object LectureRoomRepository {
             }
     }
 
-    fun toggleFavorite(roomId: String) {
-        val uid = UserRepository.getCurrentUid() ?: return
+    fun toggleFavorite(
+        roomId: String,
+        onResult: (RepositoryResult<Boolean>) -> Unit
+    ) {
+        val uid = UserRepository.getCurrentUid() ?: run {
+            onResult(RepositoryResult.Error(authenticationFailure("찜 변경")))
+            return
+        }
+        if (!NetworkStatus.hasValidatedInternet()) {
+            onResult(RepositoryResult.Error(networkFailure("찜 변경")))
+            return
+        }
         val userDocRef = db.collection("User").document(uid)
 
-        // isFavorite 값을 확인하여 서버에 추가 또는 삭제 요청
-        val isCurrentlyFavorite = favoriteRoomIds.value?.contains(roomId) == true
-
-        if (isCurrentlyFavorite) {
-            // 찜 목록에서 제거
-            userDocRef.update("favoriteRooms", FieldValue.arrayRemove(roomId))
-                .addOnSuccessListener { Log.d("LectureRoomRepo", "Room $roomId removed from favorites.") }
-                .addOnFailureListener { e -> Log.e("LectureRoomRepo", "Error removing favorite", e) }
-        } else {
-            // 찜 목록에 추가
-            userDocRef.update("favoriteRooms", FieldValue.arrayUnion(roomId))
-                .addOnSuccessListener { Log.d("LectureRoomRepo", "Room $roomId added to favorites.") }
-                .addOnFailureListener { e -> Log.e("LectureRoomRepo", "Error adding favorite", e) }
+        val transactionOptions = TransactionOptions.Builder()
+            .setMaxAttempts(1)
+            .build()
+        repositoryScope.launch {
+            try {
+                val isNowFavorite = db.runTransaction(transactionOptions) { transaction ->
+                    val snapshot = transaction.get(userDocRef)
+                    val favoriteIds = (snapshot.get("favoriteRooms") as? List<*>)
+                        .orEmpty()
+                        .filterIsInstance<String>()
+                        .toMutableSet()
+                    val newState = if (favoriteIds.remove(roomId)) {
+                        false
+                    } else {
+                        favoriteIds.add(roomId)
+                        true
+                    }
+                    transaction.update(userDocRef, "favoriteRooms", favoriteIds.toList())
+                    newState
+                }.awaitWithTimeout()
+                Log.d("LectureRoomRepo", "Favorite state confirmed for $roomId: $isNowFavorite")
+                onResult(RepositoryResult.Success(isNowFavorite))
+            } catch (error: Exception) {
+                onResult(RepositoryResult.Error(repositoryFailure("찜 변경", error)))
+            }
         }
     }
 
@@ -143,19 +179,21 @@ object LectureRoomRepository {
      * @param onResult 조회 결과 콜백
      */
     fun fetchRoomByName(roomName: String, onResult: (LectureRoom?) -> Unit) {
-        db.collection("rooms")
-            .whereEqualTo("name", roomName)
-            .get()
-            .addOnSuccessListener { documents ->
+        repositoryScope.launch {
+            try {
+                val documents = db.collection("rooms")
+                    .whereEqualTo("name", roomName)
+                    .get()
+                    .awaitWithTimeout()
                 val room = documents.firstOrNull()?.let { doc ->
                     doc.toObject<LectureRoom>().copy(id = doc.id)
                 }
                 onResult(room)
-            }
-            .addOnFailureListener {
-                Log.e("LectureRoomRepo", "Error fetching room by name: $roomName", it)
+            } catch (error: Exception) {
+                Log.e("LectureRoomRepo", "Error fetching room by name: $roomName", error)
                 onResult(null)
             }
+        }
     }
 
     fun fetchRoomByCanonicalId(roomId: String, onResult: (LectureRoom?) -> Unit) {
@@ -168,19 +206,19 @@ object LectureRoomRepository {
             return
         }
 
-        db.collection("rooms")
-            .get()
-            .addOnSuccessListener { documents ->
+        repositoryScope.launch {
+            try {
+                val documents = db.collection("rooms").get().awaitWithTimeout()
                 val room = documents.mapNotNull { doc ->
                     doc.toObject<LectureRoom>().copy(id = doc.id)
                 }.firstOrNull { room ->
                     RoomIdUtils.matchesReservationRoomId(room, canonicalRoomId)
                 }
                 onResult(room)
-            }
-            .addOnFailureListener {
-                Log.e("LectureRoomRepo", "Error fetching room by canonical id: $canonicalRoomId", it)
+            } catch (error: Exception) {
+                Log.e("LectureRoomRepo", "Error fetching room by canonical id: $canonicalRoomId", error)
                 onResult(null)
             }
+        }
     }
 }

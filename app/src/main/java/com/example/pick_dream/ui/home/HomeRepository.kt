@@ -2,52 +2,68 @@ package com.example.pick_dream.ui.home
 
 import android.content.Context
 import com.example.pick_dream.model.Reservation
+import com.example.pick_dream.repository.RepositoryResult
 import com.example.pick_dream.repository.UserRepository
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ktx.toObject
+import com.example.pick_dream.repository.repositoryFailure
+import com.example.pick_dream.ui.home.reservation.ReservationRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * HomeFragment에서 필요한 데이터 접근 로직(Firestore, SharedPreferences)을 담당하는 Repository 클래스.
  * Fragment에서 직접 DB를 다루지 않고 이 클래스를 통해서만 데이터에 접근합니다.
  */
 object HomeRepository {
-
-    private val db = FirebaseFirestore.getInstance()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /**
      * 현재 로그인한 사용자의 예약 목록 중 진행 중이거나 가장 가까운 예정 예약을 콜백으로 반환합니다.
      * @param onResult 조회 결과 콜백. 유효한 예약이 없으면 null을 반환합니다.
      */
-    fun fetchActiveOrUpcomingReservation(onResult: (Reservation?) -> Unit) {
-        UserRepository.getCurrentStudentId { studentId ->
-                if (studentId.isNullOrBlank()) {
-                    onResult(null)
-                    return@getCurrentStudentId
+    fun fetchActiveOrUpcomingReservation(
+        onResult: (RepositoryResult<Reservation?>) -> Unit
+    ) {
+        scope.launch {
+            val studentId = try {
+                UserRepository.getCurrentStudentId()
+            } catch (error: Exception) {
+                onResult(RepositoryResult.Error(repositoryFailure("홈 예약 조회", error)))
+                return@launch
+            }
+            if (studentId.isNullOrBlank()) {
+                onResult(RepositoryResult.Success(null))
+                return@launch
+            }
+
+            val reservations = when (
+                val result = ReservationRepository.getReservationsByUser(studentId)
+            ) {
+                is RepositoryResult.Success -> result.data
+                is RepositoryResult.Error -> {
+                    onResult(result)
+                    return@launch
                 }
+            }
 
-                db.collection("Reservations")
-                    .whereEqualTo("userID", studentId)
-                    .get()
-                    .addOnSuccessListener { snapshot ->
-                        val now = java.util.Calendar.getInstance()
-                        val reservations = snapshot.documents.mapNotNull { it.toObject<Reservation>() }
-
-                        val active = reservations.firstOrNull {
-                            val start = it.startTime?.let { s -> parseKoreanDateToCalendar(s) }
-                            val end = it.endTime?.let { e -> parseKoreanDateToCalendar(e) }
-                            start != null && end != null && !now.before(start) && now.before(end)
-                        }
-
-                        val upcoming = if (active == null) {
-                            reservations.filter {
-                                val start = it.startTime?.let { s -> parseKoreanDateToCalendar(s) }
-                                start != null && now.before(start)
-                            }.minByOrNull { parseKoreanDateToCalendar(it.startTime!!)!!.timeInMillis }
-                        } else null
-
-                        onResult(active ?: upcoming)
-                    }
-                    .addOnFailureListener { onResult(null) }
+            val now = java.util.Calendar.getInstance()
+            val active = reservations.firstOrNull {
+                val start = it.startTime?.let { value -> parseKoreanDateToCalendar(value) }
+                val end = it.endTime?.let { value -> parseKoreanDateToCalendar(value) }
+                start != null && end != null && !now.before(start) && now.before(end)
+            }
+            val upcoming = if (active == null) {
+                reservations.filter {
+                    val start = it.startTime?.let { value -> parseKoreanDateToCalendar(value) }
+                    start != null && now.before(start)
+                }.minByOrNull {
+                    parseKoreanDateToCalendar(it.startTime.orEmpty())?.timeInMillis ?: Long.MAX_VALUE
+                }
+            } else {
+                null
+            }
+            onResult(RepositoryResult.Success(active ?: upcoming))
         }
     }
 

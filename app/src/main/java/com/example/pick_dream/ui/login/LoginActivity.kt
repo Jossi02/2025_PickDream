@@ -11,7 +11,12 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.pick_dream.MainActivity
 import com.example.pick_dream.R
+import com.example.pick_dream.repository.NetworkStatus
+import com.example.pick_dream.repository.networkFailure
+import com.example.pick_dream.repository.repositoryFailure
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
 
 class LoginActivity : AppCompatActivity() {
 
@@ -41,21 +46,33 @@ class LoginActivity : AppCompatActivity() {
                 Toast.makeText(this, "학번과 비밀번호를 입력해주세요.", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            if (!NetworkStatus.hasValidatedInternet()) {
+                Toast.makeText(
+                    this,
+                    networkFailure("로그인").userMessage,
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@setOnClickListener
+            }
 
             // 학번을 이메일 형식으로 변환하여 로그인
             val dummyEmail = "$id$EMAIL_DOMAIN"
+            loginButton.isEnabled = false
             auth.signInWithEmailAndPassword(dummyEmail, password)
                 .addOnCompleteListener { task ->
+                    loginButton.isEnabled = true
                     if (task.isSuccessful) {
                         startActivity(Intent(this, MainActivity::class.java))
                         finish()
                     } else {
                         Log.e("LoginActivity", "Login failed", task.exception)
-                        Toast.makeText(
-                            this,
-                            "로그인 실패: ${task.exception?.message}",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        val message = when (val error = task.exception) {
+                            is FirebaseAuthInvalidCredentialsException,
+                            is FirebaseAuthInvalidUserException -> "학번 또는 비밀번호를 확인해 주세요."
+                            null -> "로그인에 실패했습니다. 다시 시도해 주세요."
+                            else -> repositoryFailure("로그인", error).userMessage
+                        }
+                        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                     }
                 }
         }

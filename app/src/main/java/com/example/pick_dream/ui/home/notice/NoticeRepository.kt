@@ -1,9 +1,11 @@
 package com.example.pick_dream.ui.home.notice
 
 import com.example.pick_dream.model.Notice
+import com.example.pick_dream.repository.RepositoryResult
+import com.example.pick_dream.repository.awaitWithTimeout
+import com.example.pick_dream.repository.repositoryFailure
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
-import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -14,10 +16,10 @@ object NoticeRepository {
     /**
      * Firestore에서 모든 공지사항을 가져옵니다.
      */
-    suspend fun fetchAllNotices(): List<Notice> {
+    suspend fun fetchAllNotices(): RepositoryResult<List<Notice>> {
         return try {
-            val result = db.collection("Notices").get().await()
-            result.map { doc ->
+            val result = db.collection("Notices").get().awaitWithTimeout()
+            RepositoryResult.Success(result.map { doc ->
                 val timestamp = doc.getTimestamp("createdAt")
                 val formattedDate = timestamp?.toDate()?.let { formatter.format(it) } ?: ""
 
@@ -28,22 +30,22 @@ object NoticeRepository {
                     date = formattedDate,
                     content = doc.getString("content") ?: ""
                 )
-            }.sortedByDescending { it.date } // 최신순 정렬 보장
+            }.sortedByDescending { it.date }) // 최신순 정렬 보장
         } catch (e: Exception) {
-            emptyList()
+            RepositoryResult.Error(repositoryFailure("공지사항 조회", e))
         }
     }
 
     /**
      * Firestore에서 가장 최근 공지사항 1개를 가져옵니다.
      */
-    suspend fun fetchLatestNotice(): Notice? {
+    suspend fun fetchLatestNotice(): RepositoryResult<Notice?> {
         return try {
             val result = db.collection("Notices")
                 .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
                 .limit(1)
-                .get().await()
-            if (!result.isEmpty) {
+                .get().awaitWithTimeout()
+            val notice = if (!result.isEmpty) {
                 val doc = result.documents[0]
                 val timestamp = doc.getTimestamp("createdAt")
                 val formattedDate = timestamp?.toDate()?.let { formatter.format(it) } ?: ""
@@ -57,8 +59,9 @@ object NoticeRepository {
             } else {
                 null
             }
+            RepositoryResult.Success(notice)
         } catch (e: Exception) {
-            null
+            RepositoryResult.Error(repositoryFailure("최신 공지 조회", e))
         }
     }
 }

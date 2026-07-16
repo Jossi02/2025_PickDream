@@ -24,6 +24,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import com.example.pick_dream.ui.home.search.LectureRoomRepository
 import com.example.pick_dream.ui.mypage.review.ReviewRepository
+import com.example.pick_dream.repository.RepositoryResult
 
 class MapsFragment : Fragment(), OnMapReadyCallback {
 
@@ -95,7 +96,13 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
 
     private fun loadDynamicMapData() {
         viewLifecycleOwner.lifecycleScope.launch {
-            val allReviews = ReviewRepository.getAllReviews()
+            val allReviews = when (val result = ReviewRepository.getAllReviews()) {
+                is RepositoryResult.Success -> result.data
+                is RepositoryResult.Error -> {
+                    Toast.makeText(requireContext(), result.failure.userMessage, Toast.LENGTH_SHORT).show()
+                    emptyList()
+                }
+            }
             
             LectureRoomRepository.lectureRoomsWithFavorites.observe(viewLifecycleOwner) { items ->
                 val allRooms = items.filterIsInstance<com.example.pick_dream.ui.home.search.ListItem.RoomItem>().map { it.lectureRoom }

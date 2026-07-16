@@ -16,6 +16,8 @@ import androidx.navigation.fragment.findNavController
 import com.example.pick_dream.R
 import com.example.pick_dream.model.Reservation
 import com.example.pick_dream.repository.UserRepository
+import com.example.pick_dream.repository.NetworkStatus
+import com.example.pick_dream.repository.networkFailure
 import com.example.pick_dream.util.ReservationTimeUtils
 import com.google.android.material.button.MaterialButton
 
@@ -159,6 +161,15 @@ class ManualReservationInputFragment : Fragment() {
         )
         if (validationError != null) {
             Toast.makeText(context, validationError, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (!NetworkStatus.hasValidatedInternet()) {
+            Toast.makeText(
+                context,
+                networkFailure("예약 생성").userMessage,
+                Toast.LENGTH_SHORT
+            ).show()
             return
         }
 

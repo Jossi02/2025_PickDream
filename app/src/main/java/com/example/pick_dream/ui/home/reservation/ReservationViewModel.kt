@@ -6,7 +6,9 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.pick_dream.model.Reservation
+import com.example.pick_dream.repository.RepositoryResult
 import com.example.pick_dream.repository.UserRepository
+import com.example.pick_dream.repository.repositoryFailure
 import kotlinx.coroutines.launch
 
 class ReservationViewModel : ViewModel() {
@@ -33,7 +35,15 @@ class ReservationViewModel : ViewModel() {
                 }
 
                 // 학번으로 예약 목록 조회
-                val reservations = ReservationRepository.getReservationsByUser(studentId)
+                val reservations = when (
+                    val result = ReservationRepository.getReservationsByUser(studentId)
+                ) {
+                    is RepositoryResult.Success -> result.data
+                    is RepositoryResult.Error -> {
+                        _message.value = result.failure.userMessage
+                        return@launch
+                    }
+                }
                 if (reservations.isEmpty()) {
                     _listItems.value = emptyList()
                     _isLoading.value = false
@@ -42,7 +52,13 @@ class ReservationViewModel : ViewModel() {
 
                 // 룸 이미지 조회
                 val roomIds = reservations.map { it.roomID }
-                val roomImageUrls = ReservationRepository.getRoomImages(roomIds)
+                val roomImageUrls = when (val result = ReservationRepository.getRoomImages(roomIds)) {
+                    is RepositoryResult.Success -> result.data
+                    is RepositoryResult.Error -> {
+                        _message.value = result.failure.userMessage
+                        emptyMap()
+                    }
+                }
 
                 // 예약 분류 및 정렬
                 val now = java.util.Date()
@@ -74,7 +90,7 @@ class ReservationViewModel : ViewModel() {
                 _listItems.value = items
             } catch (e: Exception) {
                 Log.e("ReservationViewModel", "Failed to load reservations", e)
-                _message.value = "예약 정보를 불러오는데 실패했습니다."
+                _message.value = repositoryFailure("예약 목록 조회", e).userMessage
             } finally {
                 _isLoading.value = false
             }
@@ -90,13 +106,15 @@ class ReservationViewModel : ViewModel() {
 
         viewModelScope.launch {
             _isLoading.value = true
-            val success = ReservationRepository.cancelReservation(docId)
-            if (success) {
-                _message.value = "예약이 취소되었습니다."
-                loadReservations() // 새로고침
-            } else {
-                _message.value = "예약 취소에 실패했습니다."
-                _isLoading.value = false
+            when (val result = ReservationRepository.cancelReservation(docId)) {
+                is RepositoryResult.Success -> {
+                    _message.value = "예약이 취소되었습니다."
+                    loadReservations()
+                }
+                is RepositoryResult.Error -> {
+                    _message.value = result.failure.userMessage
+                    _isLoading.value = false
+                }
             }
         }
     }

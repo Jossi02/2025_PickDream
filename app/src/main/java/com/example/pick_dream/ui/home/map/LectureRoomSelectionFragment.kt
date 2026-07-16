@@ -7,13 +7,17 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.pick_dream.R
 import com.example.pick_dream.databinding.FragmentLectureRoomSelectionBinding
 import com.example.pick_dream.model.LectureRoom
+import com.example.pick_dream.repository.awaitWithTimeout
+import com.example.pick_dream.repository.repositoryFailure
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
 
 class LectureRoomSelectionFragment : Fragment() {
     private var _binding: FragmentLectureRoomSelectionBinding? = null
@@ -34,7 +38,6 @@ class LectureRoomSelectionFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setupUI()
-        loadAvailableRooms()
     }
 
     private fun setupUI() {
@@ -65,10 +68,13 @@ class LectureRoomSelectionFragment : Fragment() {
         binding.progressBar.visibility = View.VISIBLE
         binding.tvEmptyMessage.visibility = View.GONE
         
-        db.collection("rooms")
-            .whereEqualTo("buildingName", args.buildingName)
-            .get()
-            .addOnSuccessListener { documents ->
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val documents = db.collection("rooms")
+                    .whereEqualTo("buildingName", args.buildingName)
+                    .get()
+                    .awaitWithTimeout()
+                if (_binding == null) return@launch
                 val rooms = documents.mapNotNull { doc ->
                     doc.toObject(LectureRoom::class.java).copy(id = doc.id)
                 }
@@ -84,17 +90,19 @@ class LectureRoomSelectionFragment : Fragment() {
                 } else {
                     binding.tvEmptyMessage.visibility = View.GONE
                 }
-            }
-            .addOnFailureListener { e ->
+            } catch (e: Exception) {
+                if (_binding == null) return@launch
+                val message = repositoryFailure("강의실 조회", e).userMessage
                 binding.progressBar.visibility = View.GONE
                 binding.tvEmptyMessage.visibility = View.VISIBLE
-                binding.tvEmptyMessage.text = "강의실 정보를 불러오는데 실패했습니다."
-                Toast.makeText(context, "강의실 정보를 불러오는데 실패했습니다.", Toast.LENGTH_SHORT).show()
+                binding.tvEmptyMessage.text = message
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             }
+        }
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
     }
-} 
+}

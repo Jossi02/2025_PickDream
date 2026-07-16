@@ -9,11 +9,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.pick_dream.R
 import com.example.pick_dream.databinding.FragmentLectureRoomListBinding
+import com.example.pick_dream.repository.RepositoryResult
 import com.example.pick_dream.util.RoomIdUtils
 
 class LectureRoomListFragment : Fragment() {
@@ -88,7 +90,11 @@ class LectureRoomListFragment : Fragment() {
                 findNavController().navigate(action)
             },
             onFavoriteClick = { room ->
-                LectureRoomRepository.toggleFavorite(room.id)
+                LectureRoomRepository.toggleFavorite(room.id) { result ->
+                    if (result is RepositoryResult.Error && _binding != null) {
+                        Toast.makeText(requireContext(), result.failure.userMessage, Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         )
         binding.rvLectureRooms.layoutManager = LinearLayoutManager(context)

@@ -14,7 +14,11 @@ import androidx.navigation.NavOptions
 import androidx.activity.OnBackPressedCallback
 import androidx.lifecycle.lifecycleScope
 import com.example.pick_dream.notification.PickDreamNotificationManager
+import com.example.pick_dream.repository.NetworkStatus
 import com.example.pick_dream.repository.UserRepository
+import com.example.pick_dream.repository.RepositoryResult
+import com.example.pick_dream.repository.networkFailure
+import com.example.pick_dream.repository.repositoryFailure
 import com.example.pick_dream.ui.home.reservation.ReservationRepository
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
@@ -120,6 +124,13 @@ class LlmFragment : Fragment() {
                 isFirstMessageSent = true
             }
 
+            if (!NetworkStatus.hasValidatedInternet()) {
+                messages.add(LlmMessage(networkFailure("AI 요청").userMessage, false))
+                adapter.notifyItemInserted(messages.size - 1)
+                binding.recyclerView.scrollToPosition(messages.size - 1)
+                return
+            }
+
             val user = FirebaseAuth.getInstance().currentUser
             user?.getIdToken(true)?.addOnSuccessListener { result ->
                 val idToken = result.token ?: ""
@@ -138,11 +149,18 @@ class LlmFragment : Fragment() {
                     },
                     onFailure = { e ->
                         requireActivity().runOnUiThread {
-                            messages.add(LlmMessage("오류 발생: ${e.localizedMessage}", false))
+                            messages.add(
+                                LlmMessage(repositoryFailure("AI 요청", e).userMessage, false)
+                            )
                             adapter.notifyItemInserted(messages.size - 1)
                         }
                     }
                 )
+            }?.addOnFailureListener { error ->
+                if (_binding == null) return@addOnFailureListener
+                messages.add(LlmMessage(repositoryFailure("인증 갱신", error).userMessage, false))
+                adapter.notifyItemInserted(messages.size - 1)
+                binding.recyclerView.scrollToPosition(messages.size - 1)
             } ?: run {
                 messages.add(LlmMessage("로그인이 필요합니다.", false))
                 adapter.notifyItemInserted(messages.size - 1)
@@ -175,7 +193,12 @@ class LlmFragment : Fragment() {
             val studentId = UserRepository.getCurrentStudentId()
             if (studentId.isNullOrBlank() || !isAdded) return@launch
 
-            val reservations = ReservationRepository.getReservationsByUser(studentId)
+            val reservations = when (
+                val result = ReservationRepository.getReservationsByUser(studentId)
+            ) {
+                is RepositoryResult.Success -> result.data
+                is RepositoryResult.Error -> return@launch
+            }
             if (!isAdded) return@launch
 
             reservations.forEach { reservation ->
