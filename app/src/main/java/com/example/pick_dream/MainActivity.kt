@@ -2,13 +2,20 @@ package com.example.pick_dream
 
 import android.content.Context
 import android.os.Bundle
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import com.example.pick_dream.databinding.ActivityMainBinding
 import com.example.pick_dream.notification.PickDreamNotificationManager
+import com.example.pick_dream.notification.ReservationExactAlarmAccess
+import com.example.pick_dream.notification.ReservationNotificationPreferences
+import com.example.pick_dream.notification.ReservationReminderScheduler
+import com.example.pick_dream.notification.ReservationReminderSync
 import com.example.pick_dream.ui.home.search.LectureRoomRepository
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -22,6 +29,10 @@ class MainActivity : AppCompatActivity() {
 
         // 앱 시작 시 강의실 및 찜 목록 데이터 미리 로드
         PickDreamNotificationManager.createChannels(this)
+        ReservationReminderScheduler.restorePersisted(this)
+        lifecycleScope.launch {
+            ReservationReminderSync.reconcileCurrentUser(this@MainActivity)
+        }
         LectureRoomRepository.fetchRooms()
         LectureRoomRepository.fetchFavoriteIds()
 
@@ -31,6 +42,32 @@ class MainActivity : AppCompatActivity() {
 
         setupBottomNavigation()
         checkClassroomUsageTime()
+        showExactAlarmExplanationIfNeeded()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (ReservationExactAlarmAccess.canScheduleExactAlarms(this)) {
+            ReservationReminderScheduler.restorePersisted(this)
+        }
+    }
+
+    private fun showExactAlarmExplanationIfNeeded() {
+        if (!ReservationNotificationPreferences.isReservationUsageTimeEnabled(this)) return
+        if (!ReservationExactAlarmAccess.shouldShowInitialExplanation(this)) return
+
+        ReservationExactAlarmAccess.markInitialExplanationShown(this)
+        val requestIntent = ReservationExactAlarmAccess.requestIntent(this) ?: return
+        AlertDialog.Builder(this)
+            .setTitle("정확한 알림 권한")
+            .setMessage(
+                "강의실 이용 알림을 예약 시간에 맞춰 받으려면 " +
+                    "'알람 및 리마인더' 권한을 허용해 주세요. " +
+                    "허용하지 않아도 알림은 동작하지만 늦을 수 있습니다."
+            )
+            .setPositiveButton("설정 열기") { _, _ -> startActivity(requestIntent) }
+            .setNegativeButton("나중에", null)
+            .show()
     }
 
     /**

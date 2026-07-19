@@ -29,7 +29,6 @@ class ManualReservationInputFragment : Fragment() {
     private lateinit var etEventDetail: EditText
     private lateinit var etEventTarget: EditText
     private lateinit var etEventPeople: EditText
-    private var pendingReservationForNotification: Reservation? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -120,15 +119,12 @@ class ManualReservationInputFragment : Fragment() {
             }
         }
 
-        reservationViewModel.submitResult.observe(viewLifecycleOwner) { isSuccess ->
-            if (isSuccess == true) {
-                pendingReservationForNotification?.let { reservation ->
-                    ManualReservationNotificationCoordinator.onReservationCreated(
-                        requireContext(),
-                        reservation
-                    )
-                }
-                pendingReservationForNotification = null
+        reservationViewModel.createdReservation.observe(viewLifecycleOwner) { reservation ->
+            if (reservation != null) {
+                ManualReservationNotificationCoordinator.onReservationCreated(
+                    requireContext(),
+                    reservation
+                )
                 showSuccessDialog()
                 reservationViewModel.clearSubmitResult()
             }
@@ -212,7 +208,6 @@ class ManualReservationInputFragment : Fragment() {
                         status = "대기"
                     )
                     
-                    pendingReservationForNotification = reservation
                     reservationViewModel.makeReservation(reservation)
                 }
         }

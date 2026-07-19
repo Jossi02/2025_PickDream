@@ -59,8 +59,8 @@ class ManualReservationViewModel : ViewModel() {
     private val _isSubmitting = MutableLiveData<Boolean>()
     val isSubmitting: LiveData<Boolean> get() = _isSubmitting
 
-    private val _submitResult = MutableLiveData<Boolean?>()
-    val submitResult: LiveData<Boolean?> get() = _submitResult
+    private val _createdReservation = MutableLiveData<Reservation?>()
+    val createdReservation: LiveData<Reservation?> get() = _createdReservation
     
     private val _errorMessage = MutableLiveData<String?>()
     val errorMessage: LiveData<String?> get() = _errorMessage
@@ -110,7 +110,6 @@ class ManualReservationViewModel : ViewModel() {
                     is RepositoryResult.Success -> result.data
                     is RepositoryResult.Error -> {
                         _errorMessage.value = result.failure.userMessage
-                        _submitResult.value = false
                         return@launch
                     }
                 }
@@ -119,19 +118,16 @@ class ManualReservationViewModel : ViewModel() {
 
                 if (validationError != null) {
                     _errorMessage.value = validationError
-                    _submitResult.value = false
                 } else {
                     when (val result = ManualReservationRepository.createReservation(reservation)) {
-                        is RepositoryResult.Success -> _submitResult.value = true
+                        is RepositoryResult.Success -> _createdReservation.value = result.data
                         is RepositoryResult.Error -> {
                             _errorMessage.value = result.failure.userMessage
-                            _submitResult.value = false
                         }
                     }
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "예약 처리 중 오류가 발생했습니다."
-                _submitResult.value = false
             } finally {
                 _isSubmitting.value = false
             }
@@ -139,7 +135,7 @@ class ManualReservationViewModel : ViewModel() {
     }
 
     fun clearSubmitResult() {
-        _submitResult.value = null
+        _createdReservation.value = null
         _errorMessage.value = null
     }
 }

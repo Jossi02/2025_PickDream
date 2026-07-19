@@ -4,14 +4,17 @@ import com.example.pick_dream.model.Reservation
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.TimeZone
 
 object ReservationTimeUtils {
-    private val reservationTimeFormat = SimpleDateFormat(
-        "yyyy년 M월 d일 a h시 m분 s초 'UTC+9'",
-        Locale.KOREA
-    ).apply {
-        isLenient = false
-    }
+    private fun reservationTimeFormat() =
+        SimpleDateFormat(
+            "yyyy년 M월 d일 a h시 m분 s초 'UTC+9'",
+            Locale.KOREA
+        ).apply {
+            isLenient = false
+            timeZone = TimeZone.getTimeZone("Asia/Seoul")
+        }
 
     fun toReservationTimeString(
         year: Int,
@@ -41,7 +44,7 @@ object ReservationTimeUtils {
     fun parseReservationTimeMillis(value: String?): Long? {
         if (value.isNullOrBlank()) return null
         return try {
-            reservationTimeFormat.parse(value)?.time
+            reservationTimeFormat().parse(value)?.time
         } catch (e: Exception) {
             null
         }
@@ -55,7 +58,7 @@ object ReservationTimeUtils {
         startMinute: Int,
         nowMillis: Long = System.currentTimeMillis()
     ): Boolean {
-        val start = Calendar.getInstance().apply {
+        val start = Calendar.getInstance(TimeZone.getTimeZone("Asia/Seoul")).apply {
             set(Calendar.YEAR, year)
             set(Calendar.MONTH, month - 1)
             set(Calendar.DAY_OF_MONTH, day)

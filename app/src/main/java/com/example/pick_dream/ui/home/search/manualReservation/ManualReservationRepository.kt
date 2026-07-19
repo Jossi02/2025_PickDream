@@ -8,6 +8,6 @@ object ManualReservationRepository {
     suspend fun getReservationsByRoom(roomId: String): RepositoryResult<List<Reservation>> =
         ReservationRepository.getReservationsByRoom(roomId)
 
-    suspend fun createReservation(reservation: Reservation): RepositoryResult<Unit> =
+    suspend fun createReservation(reservation: Reservation): RepositoryResult<Reservation> =
         ReservationRepository.addReservation(reservation)
 }

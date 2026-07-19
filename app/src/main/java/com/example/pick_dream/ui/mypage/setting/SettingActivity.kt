@@ -6,13 +6,20 @@ import android.widget.ImageButton
 import android.view.View
 import android.widget.ImageView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
+import androidx.lifecycle.lifecycleScope
 import com.example.pick_dream.R
 import com.example.pick_dream.notification.PickDreamNotificationManager
 import com.example.pick_dream.notification.ReservationNotificationPreferences
+import com.example.pick_dream.notification.ReservationExactAlarmAccess
+import com.example.pick_dream.notification.ReservationReminderScheduler
+import com.example.pick_dream.notification.ReservationReminderSync
+import com.example.pick_dream.repository.RepositoryResult
+import kotlinx.coroutines.launch
 
 class SettingActivity : AppCompatActivity() {
     private lateinit var backButton: ImageButton
@@ -37,12 +44,29 @@ class SettingActivity : AppCompatActivity() {
             if (switch == null || key == null) return@registerForActivityResult
 
             if (isGranted) {
-                ReservationNotificationPreferences.setEnabled(this, key, true)
+                saveSwitchState(key, true)
+                if (key == ReservationNotificationPreferences.KEY_RESERVATION_USAGE_TIME) {
+                    requestExactAlarmAccessIfNeeded()
+                }
             } else {
                 Toast.makeText(this, "알림 권한이 없어 알림을 켤 수 없습니다.", Toast.LENGTH_SHORT).show()
                 setSwitchCheckedSilently(switch, false)
-                ReservationNotificationPreferences.setEnabled(this, key, false)
+                saveSwitchState(key, false)
             }
+        }
+
+    private val exactAlarmSettingsLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            ReservationReminderScheduler.restorePersisted(this)
+            lifecycleScope.launch {
+                ReservationReminderSync.reconcileCurrentUser(this@SettingActivity)
+            }
+            val message = if (ReservationExactAlarmAccess.canScheduleExactAlarms(this)) {
+                "정확한 시간 알림이 설정되었습니다."
+            } else {
+                "정확한 알람 권한이 없어 알림 시간이 늦어질 수 있습니다."
+            }
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,6 +78,9 @@ class SettingActivity : AppCompatActivity() {
         initializeViews()
         setupInitialState()
         setupListeners()
+        if (switch3.isChecked) {
+            requestExactAlarmAccessIfNeeded()
+        }
 
     }
 
@@ -125,12 +152,6 @@ class SettingActivity : AppCompatActivity() {
         switch3.isChecked = getSwitchState(ReservationNotificationPreferences.KEY_RESERVATION_USAGE_TIME) &&
                 hasNotificationPermission
 
-        if (!hasNotificationPermission) {
-            saveSwitchState(ReservationNotificationPreferences.KEY_RESERVATION_COMPLETE, false)
-            saveSwitchState(ReservationNotificationPreferences.KEY_RESERVATION_CANCEL, false)
-            saveSwitchState(ReservationNotificationPreferences.KEY_RESERVATION_USAGE_TIME, false)
-        }
-
         val currentLang = getCurrentLanguage()
         setLanguage(currentLang)
     }
@@ -150,6 +171,25 @@ class SettingActivity : AppCompatActivity() {
         }
 
         saveSwitchState(key, isChecked)
+        if (isChecked && key == ReservationNotificationPreferences.KEY_RESERVATION_USAGE_TIME) {
+            requestExactAlarmAccessIfNeeded()
+        }
+    }
+
+    private fun requestExactAlarmAccessIfNeeded() {
+        val requestIntent = ReservationExactAlarmAccess.requestIntent(this) ?: return
+        AlertDialog.Builder(this)
+            .setTitle("정확한 알림 권한")
+            .setMessage(
+                "강의실 이용 알림을 예약 시간에 맞춰 받으려면 " +
+                    "'알람 및 리마인더' 권한을 허용해 주세요. " +
+                    "허용하지 않아도 알림은 동작하지만 늦을 수 있습니다."
+            )
+            .setPositiveButton("설정 열기") { _, _ ->
+                exactAlarmSettingsLauncher.launch(requestIntent)
+            }
+            .setNegativeButton("나중에", null)
+            .show()
     }
 
     private fun setSwitchCheckedSilently(switch: SwitchCompat, isChecked: Boolean) {
@@ -159,10 +199,25 @@ class SettingActivity : AppCompatActivity() {
     }
 
     private fun saveSwitchState(key: String, isChecked: Boolean) {
-        getSharedPreferences("settings", MODE_PRIVATE)
-            .edit()
-            .putBoolean(key, isChecked)
-            .apply()
+        ReservationNotificationPreferences.setEnabled(this, key, isChecked)
+        if (key != ReservationNotificationPreferences.KEY_RESERVATION_USAGE_TIME) return
+
+        if (!isChecked) {
+            ReservationReminderScheduler.cancelAll(this)
+            return
+        }
+
+        ReservationReminderScheduler.restorePersisted(this)
+        lifecycleScope.launch {
+            when (val result = ReservationReminderSync.reconcileCurrentUser(this@SettingActivity)) {
+                is RepositoryResult.Success -> Unit
+                is RepositoryResult.Error -> Toast.makeText(
+                    this@SettingActivity,
+                    result.failure.userMessage,
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
     }
 
     private fun getSwitchState(key: String): Boolean {

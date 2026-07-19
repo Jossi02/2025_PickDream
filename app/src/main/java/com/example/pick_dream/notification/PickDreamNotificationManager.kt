@@ -1,7 +1,6 @@
 package com.example.pick_dream.notification
 
 import android.annotation.SuppressLint
-import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -22,15 +21,8 @@ object PickDreamNotificationManager {
     private const val CHANNEL_ID = "reservation_notifications"
     private const val CHANNEL_NAME = "강의실 예약 알림"
     private const val CHANNEL_DESCRIPTION = "강의실 예약 완료, 취소, 이용 시간 알림"
-    private const val USAGE_REMINDER_OFFSET_MILLIS = 10 * 60 * 1000L
-
     const val EXTRA_NOTIFICATION_ID = "notification_id"
-    const val EXTRA_TITLE = "title"
-    const val EXTRA_BODY = "body"
-    const val EXTRA_USER_ID = "user_id"
-    const val EXTRA_ROOM_ID = "room_id"
-    const val EXTRA_START_TIME = "start_time"
-    const val EXTRA_END_TIME = "end_time"
+    const val EXTRA_RESERVATION_ID = "reservation_id"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -94,63 +86,20 @@ object PickDreamNotificationManager {
         )
     }
 
-    fun scheduleUsageReminder(context: Context, reservation: Reservation) {
-        if (!ReservationNotificationPreferences.isReservationUsageTimeEnabled(context)) return
-
-        val startTime = reservation.startTime ?: return
-        val startCal = parseKoreanDateToCalendar(startTime) ?: return
-        val now = System.currentTimeMillis()
-        if (startCal.timeInMillis <= now) return
-
-        val reminderAt = (startCal.timeInMillis - USAGE_REMINDER_OFFSET_MILLIS)
-            .takeIf { it > now }
-            ?: startCal.timeInMillis
-
-        val notificationId = requestCodeFor(reservation)
-        val intent = Intent(context, ReservationAlarmReceiver::class.java).apply {
-            putExtra(EXTRA_NOTIFICATION_ID, notificationId)
-            putExtra(EXTRA_TITLE, "강의실 이용 시간 알림")
-            putExtra(EXTRA_BODY, buildUsageReminderBody(reservation, reminderAt, startCal.timeInMillis))
-            putExtra(EXTRA_USER_ID, reservation.userID)
-            putExtra(EXTRA_ROOM_ID, reservation.roomID)
-            putExtra(EXTRA_START_TIME, reservation.startTime)
-            putExtra(EXTRA_END_TIME, reservation.endTime)
-        }
-
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            notificationId,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, reminderAt, pendingIntent)
-        } else {
-            alarmManager.set(AlarmManager.RTC_WAKEUP, reminderAt, pendingIntent)
-        }
-    }
-
-    fun cancelUsageReminder(context: Context, reservation: Reservation) {
-        val notificationId = requestCodeFor(reservation)
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            notificationId,
-            Intent(context, ReservationAlarmReceiver::class.java),
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        if (pendingIntent != null) {
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            alarmManager.cancel(pendingIntent)
-            pendingIntent.cancel()
-        }
-    }
-
     fun showUsageReminderFromAlarm(context: Context, notificationId: Int, title: String, body: String) {
         if (!ReservationNotificationPreferences.isReservationUsageTimeEnabled(context)) return
         showNotification(context, notificationId, title, body)
+    }
+
+    fun canShowNotifications(context: Context): Boolean {
+        if (!ReservationNotificationPreferences.hasPostNotificationPermission(context)) return false
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channel = manager.getNotificationChannel(CHANNEL_ID)
+            if (channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE) return false
+        }
+        return true
     }
 
     @SuppressLint("MissingPermission")
@@ -160,7 +109,7 @@ object PickDreamNotificationManager {
         title: String,
         body: String
     ) {
-        if (!ReservationNotificationPreferences.hasPostNotificationPermission(context)) return
+        if (!canShowNotifications(context)) return
 
         createChannels(context)
 
@@ -193,25 +142,6 @@ object PickDreamNotificationManager {
             "$roomName $suffix"
         } else {
             "$roomName $suffix\n$timeText"
-        }
-    }
-
-    private fun buildUsageReminderBody(
-        reservation: Reservation,
-        reminderAtMillis: Long,
-        startAtMillis: Long
-    ): String {
-        val roomName = reservation.roomID.takeIf { it.isNotBlank() }?.let { "$it 강의실" } ?: "강의실"
-        val prefix = if (startAtMillis - reminderAtMillis >= USAGE_REMINDER_OFFSET_MILLIS) {
-            "10분 뒤"
-        } else {
-            "곧"
-        }
-        val timeText = buildTimeRangeText(reservation)
-        return if (timeText.isBlank()) {
-            "$prefix $roomName 이용이 시작됩니다."
-        } else {
-            "$prefix $roomName 이용이 시작됩니다.\n$timeText"
         }
     }
 
@@ -254,16 +184,6 @@ object PickDreamNotificationManager {
             }
         }
         return null
-    }
-
-    private fun requestCodeFor(reservation: Reservation): Int {
-        val key = listOf(
-            reservation.userID,
-            reservation.roomID,
-            reservation.startTime.orEmpty(),
-            reservation.endTime.orEmpty()
-        ).joinToString("|")
-        return key.hashCode() and 0x7fffffff
     }
 
     private fun nextNotificationId(): Int {

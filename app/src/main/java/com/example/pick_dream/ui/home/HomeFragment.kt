@@ -13,7 +13,6 @@ import com.example.pick_dream.R
 import com.example.pick_dream.databinding.FragmentHomeBinding
 import com.example.pick_dream.model.Reservation
 import com.example.pick_dream.repository.RepositoryResult
-import com.example.pick_dream.notification.PickDreamNotificationManager
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.squareup.picasso.Picasso
 import androidx.lifecycle.lifecycleScope
@@ -194,8 +193,6 @@ class HomeFragment : Fragment() {
 
             // 예약 만료 알림 설정을 SharedPreferences에 저장 (Repository를 사용)
             HomeRepository.saveReservationPrefs(requireContext(), endCal.timeInMillis, reservation.roomID)
-            PickDreamNotificationManager.scheduleUsageReminder(requireContext(), reservation)
-
             startCountdownTimer(startCal, endCal)
         }
     }

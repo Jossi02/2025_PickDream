@@ -3,10 +3,12 @@ package com.example.pick_dream
 import com.example.pick_dream.model.Reservation
 import com.example.pick_dream.util.ReservationTimeUtils
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
+import java.util.TimeZone
 
 class ReservationTimeUtilsTest {
     @Test
@@ -16,6 +18,24 @@ class ReservationTimeUtilsTest {
         )
 
         assertNotNull(millis)
+    }
+
+    @Test
+    fun parsingUsesAsiaSeoulRegardlessOfDeviceTimezone() {
+        val previousTimeZone = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+            val millis = ReservationTimeUtils.parseReservationTimeMillis(
+                "2026년 7월 4일 오전 11시 0분 0초 UTC+9"
+            )!!
+            val seoul = Calendar.getInstance(TimeZone.getTimeZone("Asia/Seoul")).apply {
+                timeInMillis = millis
+            }
+
+            assertEquals(11, seoul.get(Calendar.HOUR_OF_DAY))
+        } finally {
+            TimeZone.setDefault(previousTimeZone)
+        }
     }
 
     @Test

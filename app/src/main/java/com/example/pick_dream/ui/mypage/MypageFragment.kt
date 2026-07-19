@@ -15,6 +15,7 @@ import com.example.pick_dream.ui.mypage.review.ReviewActivity
 import com.example.pick_dream.ui.mypage.setting.SettingActivity
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.example.pick_dream.R
+import com.example.pick_dream.notification.ReservationReminderScheduler
 
 class MypageFragment : Fragment() {
 
@@ -54,6 +55,7 @@ class MypageFragment : Fragment() {
             binding.logoutTextView.paintFlags or Paint.UNDERLINE_TEXT_FLAG
 
         binding.logoutTextView.setOnClickListener {
+            ReservationReminderScheduler.cancelAll(requireContext())
             val intent = Intent(requireContext(), LoginActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             }

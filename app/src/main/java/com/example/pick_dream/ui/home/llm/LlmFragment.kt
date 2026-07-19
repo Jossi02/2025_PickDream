@@ -14,12 +14,10 @@ import androidx.navigation.NavOptions
 import androidx.activity.OnBackPressedCallback
 import androidx.lifecycle.lifecycleScope
 import com.example.pick_dream.notification.PickDreamNotificationManager
+import com.example.pick_dream.notification.ReservationReminderSync
 import com.example.pick_dream.repository.NetworkStatus
-import com.example.pick_dream.repository.UserRepository
-import com.example.pick_dream.repository.RepositoryResult
 import com.example.pick_dream.repository.networkFailure
 import com.example.pick_dream.repository.repositoryFailure
-import com.example.pick_dream.ui.home.reservation.ReservationRepository
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 
@@ -175,7 +173,7 @@ class LlmFragment : Fragment() {
                     requireContext(),
                     extractRoomName(reply)
                 )
-                scheduleUpcomingUsageReminders()
+                reconcileUsageReminders()
             }
 
             "예약되었습니다" in reply || "변경되었습니다" in reply -> {
@@ -183,27 +181,15 @@ class LlmFragment : Fragment() {
                     requireContext(),
                     extractRoomName(reply)
                 )
-                scheduleUpcomingUsageReminders()
+                reconcileUsageReminders()
             }
         }
     }
 
-    private fun scheduleUpcomingUsageReminders() {
+    private fun reconcileUsageReminders() {
+        val appContext = requireContext().applicationContext
         viewLifecycleOwner.lifecycleScope.launch {
-            val studentId = UserRepository.getCurrentStudentId()
-            if (studentId.isNullOrBlank() || !isAdded) return@launch
-
-            val reservations = when (
-                val result = ReservationRepository.getReservationsByUser(studentId)
-            ) {
-                is RepositoryResult.Success -> result.data
-                is RepositoryResult.Error -> return@launch
-            }
-            if (!isAdded) return@launch
-
-            reservations.forEach { reservation ->
-                PickDreamNotificationManager.scheduleUsageReminder(requireContext(), reservation)
-            }
+            ReservationReminderSync.reconcileCurrentUser(appContext)
         }
     }
 

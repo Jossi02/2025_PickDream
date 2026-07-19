@@ -15,6 +15,7 @@ import com.example.pick_dream.R
 import com.example.pick_dream.databinding.FragmentReservationBinding
 import com.example.pick_dream.model.Reservation
 import com.example.pick_dream.notification.PickDreamNotificationManager
+import com.example.pick_dream.notification.ReservationReminderScheduler
 
 sealed class ReservationListItem {
     data class Header(val title: String) : ReservationListItem()
@@ -66,13 +67,11 @@ class ReservationFragment : Fragment() {
     private fun observeViewModel() {
         viewModel.listItems.observe(viewLifecycleOwner) { items ->
             adapter.submitList(items)
-            items.filterIsInstance<ReservationListItem.ReservationItem>()
-                .forEach { item ->
-                    PickDreamNotificationManager.scheduleUsageReminder(
-                        requireContext(),
-                        item.reservation
-                    )
-                }
+            ReservationReminderScheduler.reconcile(
+                requireContext(),
+                items.filterIsInstance<ReservationListItem.ReservationItem>()
+                    .map { it.reservation },
+            )
             if (items.isEmpty()) {
                 binding.tvEmptyState.visibility = View.VISIBLE
                 binding.rvReservations.visibility = View.GONE
@@ -91,7 +90,10 @@ class ReservationFragment : Fragment() {
                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 if (msg == "예약이 취소되었습니다.") {
                     pendingCancelReservation?.let { reservation ->
-                        PickDreamNotificationManager.cancelUsageReminder(requireContext(), reservation)
+                        ReservationReminderScheduler.cancel(
+                            requireContext(),
+                            reservation.documentId,
+                        )
                         PickDreamNotificationManager.showReservationCanceled(requireContext(), reservation)
                     }
                     pendingCancelReservation = null

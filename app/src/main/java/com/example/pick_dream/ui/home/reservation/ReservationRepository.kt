@@ -108,7 +108,7 @@ object ReservationRepository {
     /**
      * 새로운 예약을 추가합니다.
      */
-    suspend fun addReservation(reservation: Reservation): RepositoryResult<Unit> {
+    suspend fun addReservation(reservation: Reservation): RepositoryResult<Reservation> {
         return try {
             val ownerUid = UserRepository.getCurrentUid()
                 ?: return RepositoryResult.Error(authenticationFailure("예약 생성"))
@@ -120,15 +120,16 @@ object ReservationRepository {
                 return RepositoryResult.Error(dataFailure("예약 생성"))
             }
             val document = db.collection("Reservations").document()
-            val normalizedReservation = reservation.copy(
+            val storedReservation = reservation.copy(
+                documentId = "",
                 ownerUid = ownerUid,
                 roomID = normalizedRoomId
             )
             db.runTransaction(transactionOptions) { transaction ->
-                transaction.set(document, normalizedReservation)
+                transaction.set(document, storedReservation)
                 Unit
             }.awaitWithTimeout()
-            RepositoryResult.Success(Unit)
+            RepositoryResult.Success(storedReservation.copy(documentId = document.id))
         } catch (e: Exception) {
             RepositoryResult.Error(repositoryFailure("예약 생성", e))
         }
