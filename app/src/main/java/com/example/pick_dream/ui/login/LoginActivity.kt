@@ -14,6 +14,7 @@ import com.example.pick_dream.R
 import com.example.pick_dream.repository.NetworkStatus
 import com.example.pick_dream.repository.networkFailure
 import com.example.pick_dream.repository.repositoryFailure
+import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
@@ -21,6 +22,8 @@ import com.google.firebase.auth.FirebaseAuthInvalidUserException
 class LoginActivity : AppCompatActivity() {
 
     private lateinit var auth: FirebaseAuth
+    private lateinit var autoLoginCheckBox: MaterialCheckBox
+    private var hasNavigatedToMain = false
 
     // 학번을 Firebase Auth 이메일로 변환하기 위한 도메인
     private val EMAIL_DOMAIN = "@example.com"
@@ -37,6 +40,8 @@ class LoginActivity : AppCompatActivity() {
         val passwordEditText = findViewById<EditText>(R.id.editTextPassword)
         val loginButton = findViewById<Button>(R.id.buttonLogin)
         val forgotPasswordTextView = findViewById<TextView>(R.id.tvForgotPassword)
+        autoLoginCheckBox = findViewById(R.id.checkBoxAutoLogin)
+        autoLoginCheckBox.isChecked = AutoLoginPreferences.isEnabled(this)
 
         loginButton.setOnClickListener {
             val id = emailEditText.text.toString().trim()
@@ -62,8 +67,8 @@ class LoginActivity : AppCompatActivity() {
                 .addOnCompleteListener { task ->
                     loginButton.isEnabled = true
                     if (task.isSuccessful) {
-                        startActivity(Intent(this, MainActivity::class.java))
-                        finish()
+                        AutoLoginPreferences.setEnabled(this, autoLoginCheckBox.isChecked)
+                        navigateToMain()
                     } else {
                         Log.e("LoginActivity", "Login failed", task.exception)
                         val message = when (val error = task.exception) {
@@ -85,5 +90,29 @@ class LoginActivity : AppCompatActivity() {
                 Toast.makeText(this, "브라우저를 열 수 없습니다.", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val shouldEnterApp = AutoLoginDecider.shouldEnterApp(
+            isEnabled = AutoLoginPreferences.isEnabled(this),
+            hasAuthenticatedUser = auth.currentUser != null,
+            hasActiveSession = ActiveLoginSession.isAuthorized()
+        )
+        if (shouldEnterApp) {
+            navigateToMain()
+        }
+    }
+
+    private fun navigateToMain() {
+        if (hasNavigatedToMain) return
+        hasNavigatedToMain = true
+        ActiveLoginSession.authorize()
+        startActivity(
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+        )
+        finish()
     }
 }

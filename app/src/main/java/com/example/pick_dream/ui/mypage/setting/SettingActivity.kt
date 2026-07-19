@@ -19,6 +19,7 @@ import com.example.pick_dream.notification.ReservationExactAlarmAccess
 import com.example.pick_dream.notification.ReservationReminderScheduler
 import com.example.pick_dream.notification.ReservationReminderSync
 import com.example.pick_dream.repository.RepositoryResult
+import com.example.pick_dream.ui.login.AuthenticatedEntryGuard
 import kotlinx.coroutines.launch
 
 class SettingActivity : AppCompatActivity() {
@@ -71,6 +72,7 @@ class SettingActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (AuthenticatedEntryGuard.redirectToLoginIfRequired(this)) return
         enableEdgeToEdge()
         setContentView(R.layout.activity_setting)
         PickDreamNotificationManager.createChannels(this)

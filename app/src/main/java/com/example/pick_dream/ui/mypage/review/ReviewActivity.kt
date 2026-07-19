@@ -8,6 +8,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.pick_dream.R
+import com.example.pick_dream.ui.login.AuthenticatedEntryGuard
 
 class ReviewActivity : AppCompatActivity() {
     private val viewModel: ReviewViewModel by viewModels()
@@ -15,6 +16,7 @@ class ReviewActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (AuthenticatedEntryGuard.redirectToLoginIfRequired(this)) return
         setContentView(R.layout.activity_review)
 
         val backButton = findViewById<ImageButton>(R.id.backButton)

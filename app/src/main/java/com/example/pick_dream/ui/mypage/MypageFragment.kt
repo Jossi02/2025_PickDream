@@ -16,6 +16,9 @@ import com.example.pick_dream.ui.mypage.setting.SettingActivity
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.example.pick_dream.R
 import com.example.pick_dream.notification.ReservationReminderScheduler
+import com.example.pick_dream.ui.login.ActiveLoginSession
+import com.example.pick_dream.ui.login.AutoLoginPreferences
+import com.google.firebase.auth.FirebaseAuth
 
 class MypageFragment : Fragment() {
 
@@ -56,6 +59,9 @@ class MypageFragment : Fragment() {
 
         binding.logoutTextView.setOnClickListener {
             ReservationReminderScheduler.cancelAll(requireContext())
+            ActiveLoginSession.clear()
+            AutoLoginPreferences.setEnabled(requireContext(), false)
+            FirebaseAuth.getInstance().signOut()
             val intent = Intent(requireContext(), LoginActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             }

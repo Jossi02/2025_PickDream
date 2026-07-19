@@ -14,6 +14,7 @@ import com.example.pick_dream.notification.ReservationNotificationPreferences
 import com.example.pick_dream.notification.ReservationReminderScheduler
 import com.example.pick_dream.notification.ReservationReminderSync
 import com.example.pick_dream.ui.home.search.LectureRoomRepository
+import com.example.pick_dream.ui.login.AuthenticatedEntryGuard
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.launch
 
@@ -24,6 +25,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (AuthenticatedEntryGuard.redirectToLoginIfRequired(this)) return
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
